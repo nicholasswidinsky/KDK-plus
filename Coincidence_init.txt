@@ -1,0 +1,2 @@
+filepath	/home/nick/MSC/Plastic_scintillators/Compton_scattering_tests/Room_temperature_no_reflective_foil/plastic_woRF_2024_04_29_testing
+Coincidence_window	-400	400
