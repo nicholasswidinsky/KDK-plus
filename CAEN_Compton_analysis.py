@@ -146,7 +146,7 @@ def energyHist1D(data, Bckdata, ChBins, BinRange, norm, log,saveFilePath,fileNam
     plt.savefig(f'{saveFilePath}/{fileName}_integral_1D_hist.png',bbox_inches='tight')
     plt.close()
     
-def Stability_plots(data, ChBins, BinRange,saveFilePath,fileName,Channel):
+def Stability_plots(data, ChBins,saveFilePath,fileName,Channel):
     
     
     
@@ -154,7 +154,7 @@ def Stability_plots(data, ChBins, BinRange,saveFilePath,fileName,Channel):
     plt.tight_layout()
     plt.subplots_adjust(left = 0.06,wspace = 0.15,hspace = 0.1,top = 0.98,bottom = 0.04)
     for i in range(len(Channels)):
-        energybinsRange = np.linspace(BinRange[i][0],BinRange[i][1],ChBins[0])
+        energybinsRange = np.linspace(0,4000,ChBins[0])
         
 
         timebinsRange = np.linspace(min(data[i][0]),max(data[i][0]),100)
@@ -392,7 +392,8 @@ integralBinRange = [[0] for _ in range(len(Channels))]
 
 
 for i in range(len(Channels)):
-    integralBinRange[i].append(min(math.ceil(statistics.median(dataFile[i][1])/1000)*2000,4000))
+    integralBinRange[i].append(min(round(statistics.median(dataFile[i][1])/100)*200,4000))
+print(integralBinRange)
 
 
 fileName = file.split('.CSV')[0]
@@ -404,7 +405,7 @@ Path(f"{saveFilePath}").mkdir(parents=True, exist_ok=True)
 
 energyHist1D(data = dataFile, Bckdata = bckdataFile, ChBins = [integralBins for _ in range(len(Channels))], BinRange = integralBinRange, norm = normalize, log = Log,saveFilePath = saveFilePath,fileName = fileName, Channel = Channels, bck = backgrounds)
 
-Stability_plots(data = dataFile, ChBins = [integralBins for _ in range(len(Channels))], BinRange = integralBinRange,saveFilePath = saveFilePath,fileName = fileName, Channel = Channels)
+Stability_plots(data = dataFile, ChBins = [integralBins for _ in range(len(Channels))],saveFilePath = saveFilePath,fileName = fileName, Channel = Channels)
 try:
     TimeDiff1D(data = dataFile, BinRange = timeBinRange,saveFilePath = saveFilePath,fileName = fileName,Channels = Channels)
     energyHist2D(dataFile, ChBins = [integralBins for _ in range(len(Channels))], BinRange = integralBinRange,saveFilePath = saveFilePath,fileName = fileName,Channels = Channels,log = Log)
