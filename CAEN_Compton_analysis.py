@@ -2,6 +2,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib
 from pathlib import Path
+import statistics
+import math
 
 matplotlib.rcParams["font.size"] = 15
 matplotlib.rcParams["lines.linewidth"] = 3
@@ -47,7 +49,7 @@ def ReadInFileNaIChannels(file):
             
             for c in range(len(Channels)):
                 if int(lines[1]) == Channels[c]:
-                    data[c][0].append(float(lines[2])/(1e12))
+                    data[c][0].append(float(lines[2]))
                     data[c][1].append(float(lines[3]))
                     data[c][2].append(lines[5])
     return data, Channels
@@ -157,7 +159,7 @@ def Stability_plots(data, ChBins, BinRange,saveFilePath,fileName,Channel):
 
         timebinsRange = np.linspace(min(data[i][0]),max(data[i][0]),100)
         
-        ax[0,i].hist(data[i][1],bins = energybinsRange)
+        ax[0,i].hist(data[i][1],bins = energybinsRange,histtype = 'step')
         ax[0,i].set_title(f'Channel {Channel[i]}')
         ax[0,i].set_xlabel('Integral (ADC Channel)')
         ax[0,i].set_ylabel('Counts/bin')
@@ -193,7 +195,7 @@ def TimeDiff1D(data, BinRange,saveFilePath,fileName,Channels):
 
             ax[i,j].hist(TimeDifferenceChannel(data,[i,j])/1000, bins = timebinsRange, log = True)
             ax[i,j].set_title(f'Time Difference Ch{Channels[i]} - Ch{Channels[j]}')
-            ax[i,j].set_xlabel('Time Difference (ns)')
+            ax[i,j].set_xlabel('Time Difference (s)')
             ax[i,j].set_ylabel('Counts')
 
     
@@ -363,11 +365,11 @@ def TimeCutHist(data,ChBins,ChBinRange,norm,TimeBinRange,timeCut,saveFilePath,fi
     
     
     
-filepath = '/home/nick/PhD/Plastic_scintillators/Cryostat_gamma_V2/Darkbox_tests/CAEN_DAQ/2025_05_16/'
+filepath = '/home/nick/PhD/KDK+/Large_LSC_testing/Vertical_scatter_geometry_v4/2025_03_03/'
 
 GammaDetector = 'NaI'
-file = "SDataR_Small_PSC_Darkbox_NaI_Cs137_coinc_10CG_PSC_Lead_no_brass.CSV"
-bckfile = '/home/nick/PhD/Plastic_scintillators/Cryostat_gamma_V2/Darkbox_tests/CAEN_DAQ/2025_05_13/SDataR_Small_PSC_Darkbox_NaI_bck_coinc_2.CSV'
+file = 'SDataR_Large_LSC_vessel_NaI_Co60_triple_coinc_Vertical_scatter_v4_40CG_LSC.CSV'
+bckfile = '/home/nick/PhD/KDK+/Large_LSC_testing/Vertical_scatter_geometry_v4/2025_03_04/SDataR_Large_LSC_vessel_NaI_bck_triple_coinc_Vertical_scatter_v4_40CG_LSC.CSV'
 # bckfile = '/home/nick/PhD/Plastic_scintillators/Cryostat_gamma_V2/Darkbox_tests/CAEN_DAQ/2025_05_15/SDataR_Small_PSC_Darkbox_NaI_Cs137_coinc_10CG_PSC_Lead.CSV'
 # bckfile = f'{filepath}/{file}'
 
@@ -383,6 +385,15 @@ backgrounds = True
 normalize = False
 Log = False
 
+integralBins = 100
+
+timeBinRange = [-500000,500000]
+integralBinRange = [[0] for _ in range(len(Channels))]
+
+
+for i in range(len(Channels)):
+    integralBinRange[i].append(min(math.ceil(statistics.median(dataFile[i][1])/1000)*2000,4000))
+
 
 fileName = file.split('.CSV')[0]
 bckfileName = bckfile.split('/')[-1].split('.CSV')[0]
@@ -391,13 +402,13 @@ saveFilePath = f"{filepath}/{fileName}/figures"
 Path(f"{saveFilePath}").mkdir(parents=True, exist_ok=True)
 
 
-energyHist1D(data = dataFile, Bckdata = bckdataFile, ChBins = [100,100], BinRange = [[0,4000],[0,1500]], norm = normalize, log = Log,saveFilePath = saveFilePath,fileName = fileName, Channel = Channels, bck = backgrounds)
+energyHist1D(data = dataFile, Bckdata = bckdataFile, ChBins = [integralBins for _ in range(len(Channels))], BinRange = integralBinRange, norm = normalize, log = Log,saveFilePath = saveFilePath,fileName = fileName, Channel = Channels, bck = backgrounds)
 
-Stability_plots(data = dataFile, ChBins = [100,100], BinRange = [[0,3000],[0,1000]],saveFilePath = saveFilePath,fileName = fileName, Channel = Channels)
+Stability_plots(data = dataFile, ChBins = [integralBins for _ in range(len(Channels))], BinRange = integralBinRange,saveFilePath = saveFilePath,fileName = fileName, Channel = Channels)
 try:
-    TimeDiff1D(data = dataFile, BinRange = [-500000,500000],saveFilePath = saveFilePath,fileName = fileName,Channels = Channels)
-    energyHist2D(dataFile, ChBins = [100,100], BinRange = [[0,5000],[0,1500]],saveFilePath = saveFilePath,fileName = fileName,Channels = Channels,log = Log)
-    TimeDiff2D(data = dataFile,ChBins = [100,100],ChBinRange= [[0,1000],[0,1500]],TimeBinRange= [-400000,400000],saveFilePath = saveFilePath,fileName = fileName, Channels = Channels, log = Log)
+    TimeDiff1D(data = dataFile, BinRange = timeBinRange,saveFilePath = saveFilePath,fileName = fileName,Channels = Channels)
+    energyHist2D(dataFile, ChBins = [integralBins for _ in range(len(Channels))], BinRange = integralBinRange,saveFilePath = saveFilePath,fileName = fileName,Channels = Channels,log = Log)
+    TimeDiff2D(data = dataFile,ChBins = [integralBins for _ in range(len(Channels))],ChBinRange= integralBinRange,TimeBinRange= timeBinRange,saveFilePath = saveFilePath,fileName = fileName, Channels = Channels, log = Log)
 except:
     pass
 
