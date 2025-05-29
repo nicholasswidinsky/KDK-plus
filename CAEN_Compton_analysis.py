@@ -10,6 +10,10 @@ matplotlib.rcParams["lines.linewidth"] = 3
 matplotlib.rcParams["mathtext.default"] = 'regular'
 matplotlib.rcParams['lines.markersize'] = 3
 
+LeftPMTScale = 373.609/2104.961738528885 #Scale factors for hte two PMTs so that we can out the axes in terms of Kev rather than ADC Channel.
+RightPMTScale = 373.609/1668.61105108102
+
+scalefactor = [LeftPMTScale,RightPMTScale]
 
 
 def BinHistograms(data, Range, numBins):
@@ -19,7 +23,7 @@ def BinHistograms(data, Range, numBins):
     return hist, binedges
 
 
-def ReadInFileNaIChannels(file):
+def ReadInFileNaIChannels(file,scale=False):
     
     totalChannels = []
     with open(file) as f: 
@@ -32,7 +36,7 @@ def ReadInFileNaIChannels(file):
             if i == 32: #Loops through 32 times to guarantee that each channel is seen at least twice. 
                 break
             i +=1
-    Channels = list(set(totalChannels))   
+    Channels = sorted(list(set(totalChannels))) 
     
     data = []
     for c in range(len(Channels)):
@@ -50,8 +54,15 @@ def ReadInFileNaIChannels(file):
             for c in range(len(Channels)):
                 if int(lines[1]) == Channels[c]:
                     data[c][0].append(float(lines[2]))
-                    data[c][1].append(float(lines[3]))
+                    if scale and c == 0:
+                        data[c][1].append(float(lines[3])*scalefactor[0])
+                    elif scale and c == 1:
+                        data[c][1].append(float(lines[3])*scalefactor[1])
+                    else:
+                        data[c][1].append(float(lines[3]))
                     data[c][2].append(lines[5])
+                    
+    
     return data, Channels
 
 
@@ -68,12 +79,12 @@ def TimeDifferenceChannel(data,channels):
     for i in range(len(data[0][0])):
         timeDiff.append(data[channels[0]][0][i] - data[channels[1]][0][i])
         
-    timeDiff = np.asfarray(timeDiff, float)
+    timeDiff = np.asarray(timeDiff, float)
     return timeDiff
 
 
 
-def energyHist1D(data, Bckdata, ChBins, BinRange, norm, log,saveFilePath,fileName,Channel, bck):
+def energyHist1D(data, Bckdata, ChBins, BinRange, norm, log,saveFilePath,fileName,Channel, bck,scale):
     ######################################################################################################
     # Data: 2D array that contains the data of all the channels pre sorted using the RedInFile function. #
     # bckData: 2D array that contains the data of the background run.                                    #
@@ -99,7 +110,8 @@ def energyHist1D(data, Bckdata, ChBins, BinRange, norm, log,saveFilePath,fileNam
             ncols +=1
         
         
-        
+    nrows = int(nrows)
+    ncols = int(ncols)
     fig, ax = plt.subplots(nrows,ncols, figsize = (10*ncols,10*nrows))
     fig.tight_layout()
     plt.subplots_adjust(wspace = 0.1,hspace =0.3)
@@ -135,18 +147,24 @@ def energyHist1D(data, Bckdata, ChBins, BinRange, norm, log,saveFilePath,fileNam
                 ax[row,col].hist(bckBins[:-1],bins =bckBins,density = norm,weights=bckInt/(Bckdata[i][0][-1] - Bckdata[i][0][0]),histtype = 'step',label = f'Background Ch {Channel[i]} ', log = log)
 
             ax[row,col].set_title(f'Channel {Channel[i]}')
-            ax[row,col].set_xlabel('Integral (ADC Channel)')
+            if scale:
+                ax[row,col].set_xlabel('Integral (KeV)')
+            else:
+                ax[row,col].set_xlabel('Integral (ADC Channel)')
             ax[row,col].set_ylabel('Counts/bin/ps')
             
-            row += 1
-            if row == nrows:
-                row = 0
-                col +=1
+            col += 1
+            if col == ncols:
+                col = 0
+                row +=1
         
-    plt.savefig(f'{saveFilePath}/{fileName}_integral_1D_hist.png',bbox_inches='tight')
+    if scale:
+        plt.savefig(f'{saveFilePath}/{fileName}_scaled_integral_1D_hist.png',bbox_inches='tight')
+    else:
+        plt.savefig(f'{saveFilePath}/{fileName}_integral_1D_hist.png',bbox_inches='tight')
     plt.close()
     
-def Stability_plots(data, ChBins,saveFilePath,fileName,Channel):
+def Stability_plots(data, ChBins,saveFilePath,fileName,Channel,scale):
     
     
     
@@ -154,23 +172,29 @@ def Stability_plots(data, ChBins,saveFilePath,fileName,Channel):
     plt.tight_layout()
     plt.subplots_adjust(left = 0.06,wspace = 0.15,hspace = 0.1,top = 0.98,bottom = 0.04)
     for i in range(len(Channels)):
-        energybinsRange = np.linspace(0,4000,ChBins[0])
+        energybinsRange = np.linspace(0,4100,ChBins[0])
         
 
         timebinsRange = np.linspace(min(data[i][0]),max(data[i][0]),100)
         
         ax[0,i].hist(data[i][1],bins = energybinsRange,histtype = 'step')
         ax[0,i].set_title(f'Channel {Channel[i]}')
-        ax[0,i].set_xlabel('Integral (ADC Channel)')
+        if scale:
+            ax[0,i].set_xlabel('Integral (KeV)')
+        else:
+            ax[0,i].set_xlabel('Integral (ADC Channel)')
         ax[0,i].set_ylabel('Counts/bin')
         
-        
-        ax[1,i].hist2d(data[i][0],data[i][1], bins = (timebinsRange,energybinsRange))
+        h=ax[1,i].hist2d(data[i][0],data[i][1], bins = (timebinsRange,energybinsRange))
+        fig.colorbar(h[3], ax=ax[1, i])
         ax[1,i].set_title(f'Channel {Channel[i]}')
         ax[1,i].set_xlabel('Trigger Time (s)')
         
         ax[1,i].set_ylabel('Integral (ADC Channel)')
-    plt.savefig(f'{saveFilePath}/{fileName}_stability_plots.png',bbox_inches='tight')
+    if scale:
+        plt.savefig(f'{saveFilePath}/{fileName}_scaled_stability_plots.png',bbox_inches='tight')
+    else:
+        plt.savefig(f'{saveFilePath}/{fileName}_stability_plots.png',bbox_inches='tight')
     
     
 def TimeDiff1D(data, BinRange,saveFilePath,fileName,Channels):
@@ -205,7 +229,7 @@ def TimeDiff1D(data, BinRange,saveFilePath,fileName,Channels):
     plt.savefig(f'{saveFilePath}/{fileName}_time_diff_1D_hist.png',bbox_inches='tight')
     plt.close()
     
-def energyHist2D(data,ChBins,BinRange,saveFilePath,fileName,Channels,log):
+def energyHist2D(data,ChBins,BinRange,saveFilePath,fileName,Channels,log,scale):
     
     ChBinsArray = []
     for i in range(len(data)):
@@ -219,16 +243,31 @@ def energyHist2D(data,ChBins,BinRange,saveFilePath,fileName,Channels,log):
         for j in range(len(data)):
             
             if log:
-                ax[i,j].hist2d(data[i][1],data[j][1],bins = (ChBinsArray[i],ChBinsArray[j]),cmin = 1,norm=matplotlib.colors.LogNorm())
+                h=ax[i,j].hist2d(data[i][1],data[j][1],bins = (ChBinsArray[i],ChBinsArray[j]),cmin = 1,norm=matplotlib.colors.LogNorm())
             else:
-                ax[i,j].hist2d(data[i][1],data[j][1],bins = (ChBinsArray[i],ChBinsArray[j]),cmin = 1)
+                h=ax[i,j].hist2d(data[i][1],data[j][1],bins = (ChBinsArray[i],ChBinsArray[j]),cmin = 1)
+                
+            fig.colorbar(h[3], ax=ax[i, j])
+            if i == 1 and j == 0:
+                ax[i,j].plot(data[i][1],data[i][1], color = 'red', linestyle = '-.')
+            elif i == 0 and j == 1:
+                ax[i,j].plot(data[i][1],data[i][1], color = 'red', linestyle = '-.')
+                
             ax[i,j].set_title(f'Ch{Channels[i]}, Ch{Channels[j]} 2D hist')
-            ax[i,j].set_xlabel(f'Ch{Channels[i]} Integral')
-            ax[i,j].set_ylabel(f'Ch{Channels[j]} Integral')
-    plt.savefig(f'{saveFilePath}/{fileName}_integral_2D_hist.png',bbox_inches='tight')
+            if scale:
+                ax[i,j].set_xlabel(f'Ch{Channels[i]} Integral (KeV)')
+                ax[i,j].set_ylabel(f'Ch{Channels[j]} Integral (KeV)')
+            else: 
+                ax[i,j].set_xlabel(f'Ch{Channels[i]} Integral (ADC Channel)')
+                ax[i,j].set_ylabel(f'Ch{Channels[j]} Integral (ADC Channel)')
+                
+    if scale:
+        plt.savefig(f'{saveFilePath}/{fileName}_scaled_integral_2D_hist.png',bbox_inches='tight')
+    else:
+        plt.savefig(f'{saveFilePath}/{fileName}_integral_2D_hist.png',bbox_inches='tight')
     plt.close()
     
-def TimeDiff2D(data,ChBins,ChBinRange,TimeBinRange,saveFilePath,fileName,Channels,log):
+def TimeDiff2D(data,ChBins,ChBinRange,TimeBinRange,saveFilePath,fileName,Channels,log,scale):
     
     ChBinsArray = []
     for i in range(len(data)):
@@ -244,13 +283,21 @@ def TimeDiff2D(data,ChBins,ChBinRange,TimeBinRange,saveFilePath,fileName,Channel
         for j in range(len(data)):
             
             if log:
-                ax[i,j].hist2d(data[i][1],TimeDifferenceChannel(data,[i,j])/1000, bins =(ChBinsArray[i],timebinsRange), cmin = 1,norm=matplotlib.colors.LogNorm())
+                h=ax[i,j].hist2d(data[i][1],TimeDifferenceChannel(data,[i,j])/1000, bins =(ChBinsArray[i],timebinsRange), cmin = 1,norm=matplotlib.colors.LogNorm())
             else:
-                ax[i,j].hist2d(data[i][1],TimeDifferenceChannel(data,[i,j])/1000, bins =(ChBinsArray[i],timebinsRange), cmin = 1)
+                h=ax[i,j].hist2d(data[i][1],TimeDifferenceChannel(data,[i,j])/1000, bins =(ChBinsArray[i],timebinsRange), cmin = 1)
+            fig.colorbar(h[3], ax=ax[i, j])
             ax[i,j].set_title(f'Ch {Channels[i]} Integral, Ch{Channels[i]} - Ch{Channels[j]} Time Difference')
-            ax[i,j].set_xlabel(f'Ch{Channels[i]} integral')
+            if scale:
+                ax[i,j].set_xlabel(f'Ch{Channels[i]} integral (KeV)')
+            else:
+                ax[i,j].set_xlabel(f'Ch{Channels[i]} integral (ADC Channel)')
             ax[i,j].set_ylabel(f'Ch{Channels[i]} - Ch{Channels[j]} Time Difference')      
-    plt.savefig(f'{saveFilePath}/{fileName}_integral_time_diff_2D_hist.png',bbox_inches='tight')
+            
+    if scale:
+        plt.savefig(f'{saveFilePath}/{fileName}_scaled_integral_time_diff_2D_hist.png',bbox_inches='tight')
+    else:
+        plt.savefig(f'{saveFilePath}/{fileName}_integral_time_diff_2D_hist.png',bbox_inches='tight')
     plt.close()
     
                 
@@ -365,25 +412,21 @@ def TimeCutHist(data,ChBins,ChBinRange,norm,TimeBinRange,timeCut,saveFilePath,fi
     
     
     
-filepath = '/home/nick/PhD/KDK+/Large_LSC_testing/Vertical_scatter_geometry_v4/2025_03_03/'
+filepath = '/home/nick/PhD/KDK+/Large_LSC_testing/Position_tests/2025_05_01/'
 
 GammaDetector = 'NaI'
-file = 'SDataR_Large_LSC_vessel_NaI_Co60_triple_coinc_Vertical_scatter_v4_40CG_LSC.CSV'
-bckfile = '/home/nick/PhD/KDK+/Large_LSC_testing/Vertical_scatter_geometry_v4/2025_03_04/SDataR_Large_LSC_vessel_NaI_bck_triple_coinc_Vertical_scatter_v4_40CG_LSC.CSV'
-# bckfile = '/home/nick/PhD/Plastic_scintillators/Cryostat_gamma_V2/Darkbox_tests/CAEN_DAQ/2025_05_15/SDataR_Small_PSC_Darkbox_NaI_Cs137_coinc_10CG_PSC_Lead.CSV'
-# bckfile = f'{filepath}/{file}'
+file = 'SDataR_Large_LSC_vessel_Cs137_triple_coinc_Vertical_scatter_v4_position_3_10fc_corrected.CSV'
+bckfile = '/home/nick/PhD/Plastic_scintillators/Cryostat_gamma_V2/Darkbox_tests/CAEN_DAQ/2025_05_13/SDataR_Small_PSC_Darkbox_NaI_bck_coinc_2.CSV'
 
-# Channels = [0,2]
-
-# fileData = ReadInFileNaI(f'{filepath}/{file}', 2, Channels = Channels)
-dataFile, Channels = ReadInFileNaIChannels(f'{filepath}/{file}')
-
-bckdataFile, bckChannels = ReadInFileNaIChannels(f'{bckfile}')
-
-
-backgrounds = True
+backgrounds = False
 normalize = False
 Log = False
+scale = False #Enables the scale factors to change the intergrals to energy.
+
+dataFile, Channels = ReadInFileNaIChannels(f'{filepath}/{file}',scale)
+
+bckdataFile, bckChannels = ReadInFileNaIChannels(f'{bckfile}',scale)
+
 
 integralBins = 100
 
@@ -392,7 +435,7 @@ integralBinRange = [[0] for _ in range(len(Channels))]
 
 
 for i in range(len(Channels)):
-    integralBinRange[i].append(min(round(statistics.median(dataFile[i][1])/100)*200,4000))
+    integralBinRange[i].append(min(math.ceil(statistics.median(dataFile[i][1])/100)*200,4000))
 print(integralBinRange)
 
 
@@ -403,15 +446,15 @@ saveFilePath = f"{filepath}/{fileName}/figures"
 Path(f"{saveFilePath}").mkdir(parents=True, exist_ok=True)
 
 
-energyHist1D(data = dataFile, Bckdata = bckdataFile, ChBins = [integralBins for _ in range(len(Channels))], BinRange = integralBinRange, norm = normalize, log = Log,saveFilePath = saveFilePath,fileName = fileName, Channel = Channels, bck = backgrounds)
+energyHist1D(data = dataFile, Bckdata = bckdataFile, ChBins = [integralBins for _ in range(len(Channels))], BinRange = integralBinRange, norm = normalize, log = Log,saveFilePath = saveFilePath,fileName = fileName, Channel = Channels, bck = backgrounds,scale = scale)
 
-Stability_plots(data = dataFile, ChBins = [integralBins for _ in range(len(Channels))],saveFilePath = saveFilePath,fileName = fileName, Channel = Channels)
-try:
-    TimeDiff1D(data = dataFile, BinRange = timeBinRange,saveFilePath = saveFilePath,fileName = fileName,Channels = Channels)
-    energyHist2D(dataFile, ChBins = [integralBins for _ in range(len(Channels))], BinRange = integralBinRange,saveFilePath = saveFilePath,fileName = fileName,Channels = Channels,log = Log)
-    TimeDiff2D(data = dataFile,ChBins = [integralBins for _ in range(len(Channels))],ChBinRange= integralBinRange,TimeBinRange= timeBinRange,saveFilePath = saveFilePath,fileName = fileName, Channels = Channels, log = Log)
-except:
-    pass
+Stability_plots(data = dataFile, ChBins = [integralBins for _ in range(len(Channels))],saveFilePath = saveFilePath,fileName = fileName, Channel = Channels,scale = scale)
+# try:
+TimeDiff1D(data = dataFile, BinRange = timeBinRange,saveFilePath = saveFilePath,fileName = fileName,Channels = Channels)
+energyHist2D(dataFile, ChBins = [integralBins for _ in range(len(Channels))], BinRange = integralBinRange,saveFilePath = saveFilePath,fileName = fileName,Channels = Channels,log = Log,scale = scale)
+TimeDiff2D(data = dataFile,ChBins = [integralBins for _ in range(len(Channels))],ChBinRange= integralBinRange,TimeBinRange= timeBinRange,saveFilePath = saveFilePath,fileName = fileName, Channels = Channels, log = Log,scale = scale)
+# except:
+#     pass
 
 # energyHist2D(bckdataFile, ChBins = [100,100,100,100], BinRange = [[0,4000],[0,4000],[0,4000],[0,4000]],saveFilePath = saveFilePath,fileName = bckfileName, Channels = [0,2,6,8])
 # TimDiff2D(data = bckdataFile,ChBins = [100,100,100,100],ChBinRange= [[0,4000],[0,4000],[0,4000],[0,4000]],TimeBinRange= [-400000,400000],saveFilePath = saveFilePath,fileName = bckfileName)
