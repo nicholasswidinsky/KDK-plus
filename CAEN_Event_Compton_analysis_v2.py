@@ -124,12 +124,13 @@ class Detector:
     #                                    and the other 16 channels of the digitizer.         #
     ##########################################################################################
     
-    def __init__(self,Ch):
+    def __init__(self,Ch,dataName):
         self.events = []
         self.t = []
         self.E = []
         self.flag = []
         self.ch = Ch
+        self.dataName = dataName
         self.tDiff = [[] for _ in range(16)]
         
     def AddEvent(self,event,tDiff):
@@ -168,9 +169,8 @@ class Detector:
         #############################################################################
         
         Int, Bins = BinHistograms(self.E,BinRange,ChBins) #Calls the bin histogram function to bin the data. 
-
-        #Plot the data onto the axis. NOTE: I still need to add in a "name" option to make the labels a bit better for when we do add in the functionality of multiple overlayed 1D plots. 
-        ax.hist(Bins[:-1],bins =Bins,density = norm,weights=Int/(self.t[-1] - self.t[0]),histtype = 'step',label = detectors[f'Channel {self.ch}'], log = log,linewidth = 3)
+        ax.hist(Bins[:-1],bins =Bins,density = norm,weights=Int/(self.t[-1] - self.t[0]),histtype = 'step',label = f'{detectors[f'Channel {self.ch}'][0]} {self.dataName}', log = log,linewidth = 3) #Plot the data on the provided histogram. Note that this data is always rate normalized. 
+        
 
         #Set various labels for the plots. 
         ax.set_title(detectors[f'Channel {self.ch}'][0])
@@ -230,10 +230,11 @@ class totalCoinc:
     #         one for detector 2, and one for detector 4.                               #
     #####################################################################################
     
-    def __init__(self,coincChannels):
+    def __init__(self,coincChannels, dataName):
         self.Coincidences = []
         self.coincChannels = coincChannels
         self.detectors = []
+        self.dataName = dataName
         
     def SortChannels(self):
         #####################################################################################
@@ -248,7 +249,7 @@ class totalCoinc:
         
         
         for i in chInd: #Loops over the number of detectors in the coincidence then makes 'n' blank detectors objects for 'n' channels. 
-            self.detectors.append(Detector(i)) #Creates a blank list of detectors that correspond to the number of channels in coincidence. 
+            self.detectors.append(Detector(i,self.dataName)) #Creates a blank list of detectors that correspond to the number of channels in coincidence. 
          
         #God I hope this doesn't run too slowly...
         for i, coinc in enumerate(self.Coincidences): #Loops through all of the events in the coincidence
@@ -258,7 +259,7 @@ class totalCoinc:
                         # print(coinc.timeDiff[ch])
                         self.detectors[j].AddEvent(event,coinc.timeDiff[ch]) #Use the AddEvent method in the detectors class to add this event to that object. 
     
-    def EnergyHist1D(self, additionalData, Bins, Binrange, saveFilePath, fileName, norm, log, scale):
+    def EnergyHist1D(self, Bins, Binrange, saveFilePath, fileName, norm, log, scale, additionalData = []):
         #################################################################
         #   This function plots the 1D spectra of the given spectra.    #
         #   Currently I have not fully implemented a system to handle   #
@@ -305,20 +306,27 @@ class totalCoinc:
         ncols = int(ncols)
         fig, ax = plt.subplots(nrows,ncols, figsize = (10*ncols,10*nrows)) #Initialize your subplot array based on the number of rows and columns that were provided. 
         fig.tight_layout() #Tight layout is always good. 
-        plt.subplots_adjust(wspace = 0.1,hspace =0.3) #Adjust the spacing between the subplots. 
+        plt.subplots_adjust(wspace = 0.2,hspace =0.3) #Adjust the spacing between the subplots. 
         
         if nrows == 1: #The way subplots works is annoying, and if there is only 1 row, then the index for ax is 1D. If there are n > 2 rows then its a 2D index. 
             
             for i,coinc in enumerate(self.detectors): #Loops through all the detectors. 
                 coinc.EnergyHist1DPlot(ax = ax[i], ChBins =Bins[i], BinRange = Binrange[i], norm = norm, log =  log) #plot the 1D hist for the detector, passing the axis it is plotted on. 
                 
-                # This is currently not functioning, so ignore. 
-                try:
-                    for j,coinc2 in enumerate(additionalData):
-                        if coinc2[i].ch == coinc.ch:
-                            coinc2[i].EnergyHist1DPlot(ax = ax[i], ChBins =Bins[i], BinRange = Binrange[i], norm = norm, log =  log)
-                except:
-                    pass
+                
+                if len(additionalData) != 0: #if the length of the additional data is 0 (blank array) then plot the additional data. 
+                    for j in additionalData: #Loop through all the different data series. 
+                        for k, coinc2 in enumerate(j.detectors): #Loop through the detectors in the chosen totalCoinObject.
+                            if coinc2.ch == coinc.ch: #Check if this detector has the same channel number as the series plotted by "self"
+                                coinc2.EnergyHist1DPlot(ax = ax[i], ChBins =Bins[i], BinRange = Binrange[i], norm = norm, log =  log) #Plot the additional data on the same plot. 
+                
+                # # This is currently not functioning, so ignore. 
+                # try:
+                #     for j,coinc2 in enumerate(additionalData):
+                #         if coinc2[i].ch == coinc.ch:
+                #             coinc2[i].EnergyHist1DPlot(ax = ax[i], ChBins =Bins[i], BinRange = Binrange[i], norm = norm, log =  log)
+                # except:
+                #     pass
                 
         #If there are more then 1 rows, then loop through all of them in a systematic manner. 
         else:
@@ -413,6 +421,7 @@ class totalCoinc:
                 ax[i,j].set_xlabel('Time Difference (s)')
                 ax[i,j].set_ylabel('Counts')
                 
+        # print(saveFilePath/f'{fileName}_time_diff_1D_hist.png')
         plt.savefig(saveFilePath/f'{fileName}_time_diff_1D_hist.png',bbox_inches='tight')
         plt.close()
         
@@ -537,26 +546,45 @@ def readInInit(initfilepath):
     ##########################################################
     
     with open(initfilepath) as f: #Open the init file
-        lines = f.readlines() #Read each line from the file
         
-        dataFilePath = lines[0].split("\n")[0].split('\t')[1] #Grab the data filepath from the first line 
-        fileName = dataFilePath.split('/')[-1].split('.CSV')[0]
-        coincEnabled = lines[1].split("\n")[0].split('\t')[1]
-        coincWindow = int(lines[2].split("\n")[0].split('\t')[1]) #Grab the coincidence window from the second line
-        CoincChannelsList = lines[3].split("\n")[0].split('\t')[1:] # grab the list of all the coinc channels
+        lines = f.readlines() #Read each line from the file
+
+        dataFilePath = [Path(lines[0].split("\n")[0].split('\t')[1])] #Grab the data filepath from the first line 
+        dataName = [lines[1].split("\n")[0].split("\t")[1]] #Grabs the name of the main data series you are plotting
+        fileName = lines[0].split("\n")[0].split('\t')[1].split('/')[-1].split('.CSV')[0] #Splits the file name from the filepath
+        coincEnabled = lines[2].split("\n")[0].split('\t')[1] #Boolean for enabling coincidences
+        coincWindow = int(lines[3].split("\n")[0].split('\t')[1]) #Grab the coincidence window from the second line
+        CoincChannelsList = lines[4].split("\n")[0].split('\t')[1:] # grab the list of all the coinc channels
+        EnableAdditionalData = lines[5].split("\n")[0].split('\t')[1] #Boolean for plotting additional data on the 1D histograms. 
+        ind = 6 #Start looping through the additional data. 
+        while EnableAdditionalData == 'True': #If enableAdditionalData is true then read in the additional data. 
+            try: #Read in lines until we get an exception then break.
+                if ind == 6: #The first time we loop through the additional data will have text before it so we get rid of that. 
+                    fileInd = 2
+                else: 
+                    fileInd = 1
+                dataFilePath.append(lines[ind].split("\n")[0].split('\t')[fileInd]) #Read in the next additional data file path
+                dataName.append(lines[ind].split("\n")[0].split('\t')[fileInd-1]) #Read in the next additional data name. 
+                ind += 1
+            except: #Break out of the wile loop when an error is encountered. 
+                break
+        
+
         
         CoincChannels = [] #Create a blank array for the final formatting of the coinc channel list. 
         for ch in CoincChannelsList: #Loop over all the different coinc channel pairs. Then separate them based into their own sub array (I might change this later but this works right now so I am keeping it. )
             CoincChannels.append(sorted(map(int,ch.split(",")))) #Append a sorted coinc channel lists to a general list. 
-
-    coincChannelBin = [[0]*16 for _ in range(len(CoincChannels))]
+            
+    mainData = zip(dataFilePath,dataName) #Zip the file paths and the filenames together. 
     
-    for i,ind in enumerate(coincChannelBin):
+    coincChannelBin = [[0]*16 for _ in range(len(CoincChannels))] #Creates an array of 16 0's
+    
+    for i,ind in enumerate(coincChannelBin): #Create the binary list of coincidences. 
         for ch in CoincChannels[i]:
             ind[ch]+=1
             
 
-    return Path(dataFilePath),fileName,coincEnabled,coincWindow,coincChannelBin
+    return list(mainData),fileName,coincEnabled,coincWindow,coincChannelBin
 
 def ReadInChannelNames(settings):
     ##############################################################################################
@@ -606,7 +634,7 @@ def ReadInChannelNames(settings):
     return channels
 
 
-def sortTotalCoincidences(coincidences,CoincCHList):
+def sortTotalCoincidences(coincidences,CoincCHList,name):
     #############################################################################################
     #   Sorts all of the coincidence events into the totalCoinc class, separating them based    #
     #   what channels are part of the coincidence.                                              #
@@ -620,7 +648,7 @@ def sortTotalCoincidences(coincidences,CoincCHList):
     
     totalCoincList = [] #Make a blank array to store all the totalCoinc class objects. 
     for ch in CoincCHList: #Loop through all the coincidence channel pairs. 
-        totalCoincList.append(totalCoinc(ch)) #Creates a new class object for the current coinc channel. 
+        totalCoincList.append(totalCoinc(ch,name)) #Creates a new class object for the current coinc channel. 
         
     for coinc in coincidences: #Loops over all the coincident events
         for i,ch in enumerate(CoincCHList): #Loops over all the provided coincidence channel combinations. 
@@ -679,19 +707,21 @@ def bintodec(bin):
 
 #Filepath for the CAEN_analysis_init.txt file
 # initFilePath = '/home/nick/PhD/KDK+/code/CAEN_analysis_init.txt'
-initFilePath = Path.home() / 'PhD' / 'KDK+' / 'code' / 'CAEN_analysis_init.txt'
+initFilePath = Path.cwd() / 'CAEN_analysis_init.txt'
 
 #reads in the init file. 
-dataFilePath,fileName,coincEnabled,coincWindow,CoincChannels = readInInit(initFilePath)
+mainData,fileName,coincEnabled,coincWindow,CoincChannels = readInInit(initFilePath)
 
 #Define the filepath to the settings.xml file. 
-settingsFilePath = dataFilePath.parent.parent / 'settings.xml'
+settingsFilePath = mainData[0][0].parent.parent / 'settings.xml'
 #Read in the detector names from the settings file. 
 detectors = ReadInChannelNames(settingsFilePath)
 
 
 #Read in the data from the csv file
-events,coinc = readInFile(filepath=dataFilePath,CoincWindow=coincWindow)
+events,coinc = readInFile(filepath=mainData[0][0],CoincWindow=coincWindow)
+
+
 
 uniqueCoinc = []
 for c in coinc:
@@ -700,9 +730,6 @@ for c in coinc:
     else:
         uniqueCoinc.append(c.Channels)
     
-
-# #further data can be read in using the following. 
-# events2,coinc2 = readInFile(filepath = '/home/nick/PhD/KDK+/Annulus_Compton_scatter_V1/2025_07_09/NaI_annulus_LS_Cs137_NaI_3_triple_coinc/RAW/SDataR_NaI_annulus_LS_Cs137_NaI_3_triple_coinc.CSV',CoincWindow=coincWindow)
 
 #Determines how long it took to read in the data. 
 ReadTime = time.time()
@@ -722,8 +749,17 @@ else:
 
     #If coincidences are enebled then it will sort all the data based on the coincidence window. 
         if coincEnabled: #If true this will sort the events by the coincidence they have. 
-            totalCoincList = sortTotalCoincidences(coinc,CoincChannels)
-            # totalCoincList2 = sortTotalCoincidences(coinc2,CoincChannels)
+            totalCoincList = sortTotalCoincidences(coincidences=coinc,CoincCHList=CoincChannels,name=mainData[0][1])
+            
+            additionalCoincidences = []
+            if len(mainData) > 1: #If the list of all the data series is > 1 then read in the rest of the data as "Additional Coincidences".
+                i = 1
+                while i < len(mainData): #Loop through the filepaths from mainData, ignoring the first one. 
+                    tempEvents,tempCoinc = readInFile(filepath=mainData[i][0],CoincWindow=coincWindow) #Reads in the additional data and sorts it based on coincidences
+                    tempTotalCoinc = (sortTotalCoincidences(coincidences=tempCoinc,CoincCHList=CoincChannels,name=mainData[i][1])) #Sorts based on totalCoincidences
+                    i +=1 
+                    for j in tempTotalCoinc: #Loop through the data that was just parsed and append it to the additionalCoincides array. 
+                        additionalCoincidences.append(j)
             
         else: #If false, then sort the events based on channel alone, no coincidence. 
             pass #Add in this functionality later. 
@@ -741,8 +777,6 @@ else:
 
         # bckfileName = bckfile.split('/')[-1].split('.CSV')[0]
 
-        saveFilePath = dataFilePath.with_suffix('')  # removes .CSV suffix
-        saveFilePath.mkdir(parents=True, exist_ok=True)
 
         integralBins = 100
 
@@ -762,11 +796,11 @@ else:
             #     if coinc.coincChannels == coinc2.coincChannels:
             #         data2.append(coinc2)
             
-            saveFilePath = dataFilePath.with_suffix('') / 'figures' / f"Coincidence_Channels_{Channels}"
+            saveFilePath = mainData[0][0].with_suffix('') / 'figures' / f"Coincidence_Channels_{Channels}"
             Path(f"{saveFilePath}").mkdir(parents=True, exist_ok=True)
             plottingStartTime = time.time()
             
-            coinc.EnergyHist1D(additionalData = data2, Bins = [integralBins,integralBins,integralBins], Binrange = integralBinRange, saveFilePath = saveFilePath, fileName = fileName, norm = norm, log = log, scale = scale)
+            coinc.EnergyHist1D(additionalData = additionalCoincidences, Bins = [integralBins,integralBins,integralBins], Binrange = integralBinRange, saveFilePath = saveFilePath, fileName = fileName, norm = norm, log = log, scale = scale)
             
             E1DTime = time.time()
             print(f'\t Time to Plot 1D Energy Hist: {E1DTime- plottingStartTime}')
