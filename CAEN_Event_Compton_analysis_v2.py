@@ -7,6 +7,7 @@ import math
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 import time 
 import xml.etree.ElementTree as ET
+from matplotlib.gridspec import GridSpec
 
 startTime = time.time()
 
@@ -14,22 +15,6 @@ matplotlib.rcParams["font.size"] = 20
 matplotlib.rcParams["lines.linewidth"] = 3
 matplotlib.rcParams["mathtext.default"] = 'regular'
 matplotlib.rcParams['lines.markersize'] = 3
-
-# detectors = { #Global dictionary that converts channel number to the detector it is associated with, and a scale factor (KeV/ADC). Note the syntax for the channel #.
-#     "Channel 4" : ["LS Left PMT",373.609/2104.961738528885],
-#     "Channel 5" : ["LS Right PMT",373.609/1668.61105108102],
-#     "Channel 8" : ["NaI 1"],
-#     "Channel 10" : ["NaI 2"],
-#     "Channel 12" : ["NaI 3"],
-#     "Channel 14" : ["NaI 4"],
-# }
-
-
-# detectors = { #Global dictionary that converts channel number to the detector it is associated with, and a scale factor (KeV/ADC). Note the syntax for the channel #.
-#     "Channel 10" : ["LS Left PMT",373.609/2104.961738528885],
-#     "Channel 12" : ["LS Right PMT",373.609/1668.61105108102],
-#     "Channel 14" : ["NaI"],
-# }
 
 
 class event:
@@ -46,12 +31,74 @@ class event:
     #       - Ch (int): Channel number for the event                           #
     ############################################################################
     
-    def __init__(self,t,E,flag,Ch,waveform = []):
+    def __init__(self,t,E,flag,Ch,eventNum,waveform = []):
         self.t = t
         self.E = E
         self.flag = flag
         self.Ch = Ch
+        self.eventNum = eventNum
         self.waveform = waveform
+        
+    def plotWaveform(self):
+        
+        intRegion = [50,350]
+        triggerTime = 125
+        
+        timeValues = np.linspace(0,2*len(self.waveform),len(self.waveform)) #It looks like the sampling rate is 2 ns/sample. Thus to find the total event time we multiply th length of the array by 2 ns/sample. 
+        baseline = np.average(self.waveform[0:30])
+        
+        baselineSub = []
+        for sample in self.waveform:
+            baselineSub.append(sample - baseline)
+        # timeValues = np.linspace(0,992,len(self.waveform)) #We have the record lenght set to 992 ns. I can't see where this is stored in the settings.xml file. Maybe it only gets saved if it is changed. If that is the case I will update this to default to 992 if it isn't specified there. 
+        fig = plt.figure(figsize=(20, 10))
+        gs = GridSpec(2, 2, figure=fig)
+
+        # Top-left plot
+        ax1 = fig.add_subplot(gs[0, 0])
+        # Top-right plot
+        ax2 = fig.add_subplot(gs[0, 1])
+        # Bottom plot spanning both columns
+        ax3 = fig.add_subplot(gs[1, :])
+        plt.tight_layout()
+        
+        # indL = np.where(timeValues == intRegion[0])
+        # indU = np.where(timeValues == intRegion[1])
+        # print(indL)
+        # print(indU)
+        
+        ax1.plot(timeValues,self.waveform)
+        ax1.axvline(intRegion[0], color = 'red', label = 'Integration region')
+        ax1.axvline(triggerTime, color = 'black', label = 'trigger')
+        ax1.axvline(intRegion[1], color = 'red')
+        ax1.set_xlim([intRegion[0]-50,intRegion[1]+50])
+        ax1.set_xlabel('Time (ns)')
+        ax1.legend(loc = 'best')
+        ax1.set_ylabel('')
+        
+        ax2.plot(timeValues,baseline - self.waveform)
+        ax2.axvline(intRegion[0], color = 'red', label = 'Integration region')
+        ax2.axvline(triggerTime, color = 'black', label = 'trigger')
+        ax2.axvline(intRegion[1], color = 'red')
+        ax2.axhline(baseline - baseline, color = 'black')
+        ax2.set_xlim([intRegion[0]-50,intRegion[1]+50])
+        ax2.set_xlabel('Time (ns)')
+        ax2.legend(loc = 'best')
+        ax2.set_ylabel('')
+    
+        
+        
+        
+        
+        ax3.plot(timeValues,self.waveform)
+        ax3.axvline(intRegion[0], color = 'red', label = 'Integration region')
+        ax3.axvline(triggerTime, color = 'black', label = 'trigger')
+        ax3.axvline(intRegion[1], color = 'red')
+        ax3.set_xlabel('Time (ns)')
+        ax3.legend(loc = 'best')
+        ax3.set_ylabel('')
+        
+        plt.show()
         
     
     
@@ -125,13 +172,19 @@ class Detector:
     ##########################################################################################
     
     def __init__(self,Ch,dataName):
-        self.events = []
-        self.t = []
-        self.E = []
-        self.flag = []
-        self.ch = Ch
-        self.dataName = dataName
-        self.tDiff = [[] for _ in range(16)]
+        self.events = [] #List of all the events that are in this object
+        self.t = [] #List of the time for each event
+        self.E = [] #List of the energy for each event
+        self.flag = [] #List of the flags for each event
+        self.ch = Ch #Integer for the channel number for this object.
+        self.dataName = dataName #Name of the data
+        self.tDiff = [[] for _ in range(16)] #16xn array for the time difference between channels for each event.
+        self.Ehist = [] #Binned histogram for the Energy hist
+        self.EhistBins = [] #Bins for the energy hist
+        self.Thist = [] #Binned histogram for the time hist
+        self.ThistBins = [] #Bins for the time hist. 
+    
+
         
     def AddEvent(self,event,tDiff):
         #################################################################
@@ -147,7 +200,7 @@ class Detector:
         for i in range(len(tDiff)):
             self.tDiff[i].append(tDiff[i])
             
-    def EnergyHist1DPlot(self, ax, ChBins, BinRange, norm, log):
+    def EnergyHist1DPlot(self, ax, ChBins = None, BinRange = None, BinEdges = None, counts = None, norm = False, log = False):
         #############################################################################
         #   This is a function that plots the energy spectra of a given event.      #
         #   The inputs of this function are the detector object itself, the axis    #
@@ -168,8 +221,12 @@ class Detector:
         #       - log (boolean): Puts the y-axis to log scale.                      #
         #############################################################################
         
-        Int, Bins = BinHistograms(self.E,BinRange,ChBins) #Calls the bin histogram function to bin the data. 
-        ax.hist(Bins[:-1],bins =Bins,density = norm,weights=Int/(self.t[-1] - self.t[0]),histtype = 'step',label = f'{detectors[f'Channel {self.ch}'][0]} {self.dataName}', log = log,linewidth = 3) #Plot the data on the provided histogram. Note that this data is always rate normalized. 
+        if ChBins is not None and BinRange is not None:
+            self.Ehist, self.EhistBins = BinHistograms(self.E,BinRange,ChBins) #Calls the bin histogram function to bin the data. 
+            ax.hist(self.EhistBins[:-1],bins =self.EhistBins,density = norm,weights=self.Ehist/(self.t[-1] - self.t[0]),histtype = 'step',label = f'{detectors[f'Channel {self.ch}'][0]} {self.dataName}', log = log,linewidth = 3) #Plot the data on the provided histogram. Note that this data is always rate normalized. 
+        else:
+            ax.hist(BinEdges[:-1],bins = BinEdges, density = norm, weights = counts/(self.t[-1] - self.t[0]),histtype = 'step',label = f'{detectors[f'Channel {self.ch}'][0]} {self.dataName}', log = log,linewidth = 3)
+            
         
 
         #Set various labels for the plots. 
@@ -378,15 +435,22 @@ class totalCoinc:
                 # if j < i: 
                 #     ax[i,j].set_axis_off()
                 #     continue
-                
+                ax[i, j].set_aspect('equal')
                 if log:
                     h = ax[i,j].hist2d(det1.E,det2.E,bins = (ChBinsArray[i],ChBinsArray[j]),cmin = 1,norm=matplotlib.colors.LogNorm())
                 else:
                     h = ax[i,j].hist2d(det1.E,det2.E,bins = (ChBinsArray[i],ChBinsArray[j]),cmin = 1)
                     
-                fig.colorbar(h[3],ax=ax[i,j])
+                # fig.colorbar(h[3],ax=ax[i,j])
+                cb_ax = inset_axes(ax[i, j],
+                        width="5%", height="100%",  # narrow vertical bar
+                        loc='right',
+                        bbox_to_anchor=(0.07, 0., 1, 1),
+                        bbox_transform=ax[i, j].transAxes,
+                        borderpad=0)
+                fig.colorbar(h[3], cax=cb_ax)
                 
-                if i ==0 and j ==1:
+                if (i ==0 and j ==1) or (i ==1 and j ==0):
                     ax[i,j].plot(ChBinsArray[i],ChBinsArray[i], color = 'red', linestyle = '-.')
                     
                     
@@ -494,7 +558,30 @@ class totalCoinc:
             plt.savefig(saveFilePath/f'{fileName}_scaled_stability_plots.png',bbox_inches='tight')
         else:
             plt.savefig(saveFilePath/f'{fileName}_stability_plots.png',bbox_inches='tight')
+     
+     
+    def fitData(self,Bins,Binrange,truncRange,initFit = []):
+        
+        
+        
+        for i,coinc in enumerate(self.detectors): #Loops through all the detectors. 
+            fig,ax = plt.subplots(2,1,figsize = (20,20))
+            plt.subplots_adjust(hspace = 0.4)
+            coinc.EnergyHist1DPlot(ax = ax[0], ChBins =Bins[i], BinRange = Binrange[i], norm = norm, log =  log) #plot the 1D hist for the detector, passing the axis it is plotted on. 
             
+            
+            truncInd = np.where((coinc.EhistBins >= truncRange[0]) & (coinc.EhistBins <= truncRange[1])) #Truncate the histrogram based on the value specified in truncRange
+ 
+
+            coinc.EnergyHist1DPlot(ax = ax[1], BinEdges = coinc.EhistBins[truncInd[0][0]:truncInd[0][-1]+1], counts = coinc.Ehist[truncInd[0][0]:truncInd[0][-1]], norm = norm, log = log) #Plot the truncated histogram
+                
+                
+                
+        plt.show()        
+        
+    # def truncHist(self,Bins,Binrange,trunBins,truncBinRange,)   
+        
+        
 # def EnergyStabilityPlot(self, ax,fig, TimeBinRange,ChBinRange):
                         
 def readInFile(filepath,CoincWindow):
@@ -516,8 +603,9 @@ def readInFile(filepath,CoincWindow):
 
         for i,line in enumerate(f): #Read the file in line by line. This is lighter on the memory and faster overall. 
             data = line.split('\n')[0].split(';') #Take the line and split it first along the newline character, then the semi-colon delimeter. 
-            events.append(event(t=int(data[2])/1e3,E=int(data[3]),flag=data[5],Ch = int(data[1]))) #Take the data from each line and create a new event object. 
-            
+            events.append(event(t=int(data[2])/1e3,E=int(data[3]),flag=data[5],Ch = int(data[1]),eventNum=i, waveform =[int(num) for num in data[7:]])) #Take the data from each line and create a new event object.
+            #numbers = [int(num) for num in numbers] 
+            # events[-1].plotWaveform()
             if i==0:  #The first time we loop through we need to grab the first event ot start the coincidences. 
                 firstCoincEvent = events[0] #Set the save the event as the "firstCoincEvent" This is the event that is the first event in any arb. coincidence. 
                 coinc.append(Coincidence()) #Make a new coincidence object.
@@ -714,6 +802,7 @@ mainData,fileName,coincEnabled,coincWindow,CoincChannels = readInInit(initFilePa
 
 #Define the filepath to the settings.xml file. 
 settingsFilePath = mainData[0][0].parent.parent / 'settings.xml'
+
 #Read in the detector names from the settings file. 
 detectors = ReadInChannelNames(settingsFilePath)
 
@@ -801,6 +890,7 @@ else:
             plottingStartTime = time.time()
             
             coinc.EnergyHist1D(additionalData = additionalCoincidences, Bins = [integralBins,integralBins,integralBins], Binrange = integralBinRange, saveFilePath = saveFilePath, fileName = fileName, norm = norm, log = log, scale = scale)
+            coinc.fitData(Bins = [integralBins,integralBins,integralBins],Binrange = integralBinRange,truncRange = [1000,2200])
             
             E1DTime = time.time()
             print(f'\t Time to Plot 1D Energy Hist: {E1DTime- plottingStartTime}')

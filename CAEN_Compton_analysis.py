@@ -20,7 +20,7 @@ detectors = {
     "Channel 0" : "LS Left PMT",
     "Channel 2" : "LS RIght PMT",
     "Channel 4" : "LS Left PMT",
-    "Channel 6" : "NaI",
+    "Channel 6" : "LS Right PMT",
     "Channel 8" : "NaI 1",
     "Channel 10" : "NaI 2",
     "Channel 12" : "NaI 3",
@@ -252,7 +252,7 @@ def energyHist2D(data,ChBins,BinRange,saveFilePath,fileName,Channels,log,scale):
     
     fig,ax = plt.subplots(len(data),len(data),figsize = (10*len(data),10*len(data)))   
     plt.tight_layout() 
-    plt.subplots_adjust(wspace=0.4)
+    plt.subplots_adjust(wspace=0.4,hspace=0.2)
 
     for i in range(len(data)):
         for j in range(len(data)):
@@ -482,10 +482,10 @@ def CutDataRange(data,cutrange,cutCh,cutVariable,Channels):
             
     return cutData    
     
-filepath = '/home/nick/PhD/KDK+/Large_LSC_testing/Position_tests_outer_sleeve/2025_07_17/Large_LSC_vessel_Cs137_triple_coinc_Vertical_scatter_v4_central_position/RAW/'
+filepath = '/home/nick/PhD/KDK+/Annulus_Compton_scatter_V1/2025_07_22/NaI_annulus_LS_Cs137_NaI_3_triple_coinc_125LSB/RAW/'
 
 # GammaDetector = 'NaI'
-file = 'SDataR_Large_LSC_vessel_Cs137_triple_coinc_Vertical_scatter_v4_central_position_corrected.CSV'
+file = 'SDataR_NaI_annulus_LS_Cs137_NaI_3_triple_coinc_125LSB_corrected.CSV'
 bckfile = '/home/nick/PhD/Plastic_scintillators/Cryostat_gamma_V2/Darkbox_tests/CAEN_DAQ/2025_05_13/SDataR_Small_PSC_Darkbox_NaI_bck_coinc_2.CSV'
 
 backgrounds = False
@@ -526,7 +526,7 @@ TimeDiff2D(data = dataFile,ChBins = [integralBins for _ in range(len(Channels))]
 # except:
 #     pass
 
-# energyCut = CutDataRange(data = dataFile,cutrange = [500,1000],cutCh=2,cutVariable='Energy',Channels = Channels)
+# energyCut = CutDataRange(data = dataFile,cutrange = [500,1000],cutCh=2,cutVariable='Time',Channels = Channels)
 # # print(energyCut)
 # energyHist1D(data = energyCut, Bckdata = bckdataFile, ChBins = [integralBins for _ in range(len(Channels))], BinRange = integralBinRange, norm = normalize, log = Log,saveFilePath = saveFilePath,fileName = f"{fileName}_energy_cut", Channel = Channels, bck = backgrounds,scale = scale)
 # energyHist2D(energyCut, ChBins = [integralBins for _ in range(len(Channels))], BinRange = integralBinRange,saveFilePath = saveFilePath,fileName = f"{fileName}_energy_cut",Channels = Channels,log = Log,scale = scale)

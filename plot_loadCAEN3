@@ -1,0 +1,148 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Created on Thu Oct 19 12:34:04 2023
+
+@author: arnaudlemaire
+"""
+
+# Code to create useful data from -coinSorted.csv files, output of loadCAEN3 c++ code
+# Arnaud Lemaire 10/19/2023
+
+import os
+import numpy as np
+import matplotlib
+import matplotlib as mpl
+import matplotlib.pyplot as plt
+from matplotlib.colors import LogNorm
+from math import exp
+from math import pi
+from math import sqrt
+
+import pathlib # For paths
+
+import time # For timing
+import inspect # To get function names
+from deprecated import deprecated # Not sure this works
+
+import subprocess # FOr c++ calls
+
+import collections # For bar charts of text data
+
+from scipy.stats import poisson, norm, truncnorm
+
+import pandas as pd
+
+from uncertainties import ufloat
+
+from num2tex import num2tex
+
+import xml.etree.ElementTree as ET # Parsing xml
+
+from scipy.optimize import curve_fit
+
+# try:
+#     import sys  
+#     sys.path.insert(0, '../Utilities')
+#     import MatplotlibGraphSettings as mgs
+#     libLoad = True
+# except ImportError:
+#     print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! MatplotlibGraphSettings")
+#     libLoad = False
+
+
+
+Input = "/Users/arnaudlemaire/ECL/Queens/Experiment/LS/ComptonNewDAQ/setup_2/90_60d/Setup2_UG_RF_1050V_90d_60d_240nsCoMPASS_300_200lsb_30h_20cm/RAW/SDataR_Setup2_UG_RF_1050V_90d_60d_240nsCoMPASS_300_200lsb_30h_20cm.CSV"
+Input_sorted = "/Users/arnaudlemaire/ECL/Queens/Experiment/LS/ComptonNewDAQ/setup_2/90_60d/Setup2_UG_RF_1050V_90d_60d_240nsCoMPASS_300_200lsb_30h_20cm/RAW/SDataR_Setup2_UG_RF_1050V_90d_60d_240nsCoMPASS_300_200lsb_30h_20cm_coinSorted.csv"
+
+
+df=pd.read_csv(f'{Input_sorted}', delimiter= '\t' )
+
+def gauss(x,a,b,m,sigma):
+    return (a/(sigma*sqrt(2*pi)))*np.exp(-((x-m)**2)/(2*(sigma**2))) + b 
+d=False
+##  Récupération des dataframes correspondant aux événements dans le liquide scintillant
+
+df0=df[df['E0_AU']>0]
+df2=df0[df0['E2_AU']>0]
+df4=df0[df0['E4_AU']>0]
+
+#%%
+
+###  Figures ###
+
+bins=np.linspace(0,2000,150)
+
+counts , datax, patches = plt.hist(df2['E0_AU'],histtype='step',density=d,label='Coincidence_with_ch2_50d_raw', bins=bins)
+plt.hist(df4['E0_AU'],histtype='step',density=d,label='Coincidence_with_ch4_80_raw', bins=bins)
+#plt.hist(df0['E0_AU'],label="Total_LSC_raw",histtype='step', density =d, bins=120) #Comparaison avec le liquide scintillant sans coincidence
+
+
+n_bins= bins[:-1]+(bins[1]-bins[0])/2
+
+popt, pcov = curve_fit(gauss, n_bins , counts, bounds=(0, [10e6, 10e6, 1000,1000]))
+
+plt.plot(n_bins, gauss(n_bins, *popt), 'g--',
+         label='fit:'+str(popt) % tuple(popt))
+
+plt.yscale('log')
+plt.xlim(0,1000)
+
+plt.title('LSC_Energy_Deposition_Coincidence')
+plt.legend(loc='best',fontsize= 'small')
+plt.xlabel('Energy_AU'); plt.ylabel('Counts_density')
+plt.show()
+#plt.savefig('/Users/arnaudlemaire/ECL/Queens/Experiment/LS/ComptonNewDAQ/setup_2/80_50d/Setup2_UG_RF_1100V_80d_50d_240nsCoMPASS_1400_200lsb_15h/', dpi=400)
+#plt.clf()
+
+
+#%%
+#Code qui séléctionne le domaine de fit
+bins=np.linspace(0,2000,200)
+n_bins= bins[:-1]+(bins[1]-bins[0])/2
+
+#FIT Channel 2
+energy_min_2 = 150
+energy_max_2 = 350
+bins2=np.linspace(energy_min_2,energy_max_2,20)
+condition_energy_2 = (df2.E0_AU > energy_min_2) & (df2.E0_AU < energy_max_2)
+df_fit_2=df2.loc[condition_energy_2,:].copy()
+
+plt.hist(df2['E0_AU'],histtype='step',density=d,label='Coincidence_with_ch2_50d_raw',color='r', bins=bins)
+
+counts_2 , bins_2, patches_2 = plt.hist(df_fit_2['E0_AU'],histtype='step',density=d,color='orange', bins=bins2)
+n_bins_2= bins_2[:-1]+(bins_2[1]-bins_2[0])/2
+popt_2, pcov_2 = curve_fit(gauss, n_bins_2 , counts_2, bounds=(0, [10e6, 10e6, 1000,1000]))
+plt.plot(n_bins_2, gauss(n_bins_2, *popt_2), 'm--',
+          label='fit: a= ' + ' m= ' + str(round(popt_2[2])) + ' sigma= ' + str(round(popt_2[3])) )
+
+
+#FIT Channel 4
+energy_min_4 = 260
+energy_max_4 = 460
+bins4=np.linspace(energy_min_4,energy_max_4,20)
+condition_energy_4 = (df4.E0_AU > energy_min_4) & (df4.E0_AU < energy_max_4)
+df_fit_4=df4.loc[condition_energy_4,:].copy()
+
+plt.hist(df4['E0_AU'],histtype='step',density=d,label='Coincidence_with_ch4_90d_raw',color='c', bins=bins)
+
+counts_4 , bins_4, patches_4 = plt.hist(df_fit_4['E0_AU'],histtype='step',color='g',density=d, bins=bins4)
+n_bins_4= bins_4[:-1]+(bins_4[1]-bins_4[0])/2
+popt_4, pcov_4 = curve_fit(gauss, n_bins_4 , counts_4, bounds=(0, [10e6, 10e6, 1000,1000]))
+plt.plot(n_bins_4, gauss(n_bins_4, *popt_4), 'b--',
+          label='fit: a= ' + ' m= ' + str(round(popt_4[2])) + ' sigma= ' + str(round(popt_4[3])) )
+
+
+
+
+#plt.yscale('log')
+plt.xlim(0,700)
+plt.title('LSC_Energy_Deposition_Coincidence')
+plt.legend(loc='best',fontsize= 'small')
+plt.legend()
+plt.xlabel('Energy_AU'); plt.ylabel('Counts')
+plt.show()
+plt.savefig('/Users/arnaudlemaire/ECL/Queens/Experiment/LS/ComptonNewDAQ/setup_2/90_60d/Setup2_UG_RF_1050V_90d_60d_240nsCoMPASS_300_200lsb_30h_20cm/'+'fit' , dpi=400)
+plt.clf()
+
+

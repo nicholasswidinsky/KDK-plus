@@ -110,10 +110,10 @@ def DataCleanUp(file,channels,coincT):
 
 
 
-filepath = '/home/nick/PhD/KDK+/Large_LSC_testing/Position_tests_outer_sleeve/2025_07_17/Large_LSC_vessel_Cs137_triple_coinc_Vertical_scatter_v4_central_position/RAW/'
-filename = "SDataR_Large_LSC_vessel_Cs137_triple_coinc_Vertical_scatter_v4_central_position.CSV"
+filepath = '/home/nick/PhD/KDK+/Annulus_Compton_scatter_V1/2025_07_22/NaI_annulus_LS_Cs137_NaI_3_triple_coinc_125LSB/RAW/'
+filename = "SDataR_NaI_annulus_LS_Cs137_NaI_3_triple_coinc_125LSB.CSV"
 
-Channels = [0,2,6]
+Channels = [4,6,12]
 
 
 fileData = ReadInFileNaI(f'{filepath}/{filename}', len(Channels), Channels)

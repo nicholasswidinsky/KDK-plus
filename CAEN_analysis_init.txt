@@ -1,5 +1,5 @@
 filepath:	/home/nick/PhD/KDK+/Large_LSC_testing/Position_tests_outer_sleeve/2025_07_31/LSC_vessel_Cs137_VS_v4_Pos_3L_100lsb_thresh/RAW/SDataR_LSC_vessel_Cs137_VS_v4_Pos_3L_100lsb_thresh.CSV
-data Name: 	3cm Left Data
+data Name: 	LSC Annulus
 Coinc:	True
 Coinc Window (ns):	500
 Coinc Channels (list):	10,12,14
