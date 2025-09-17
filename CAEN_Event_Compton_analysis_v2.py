@@ -93,12 +93,13 @@ class event:
         ax3.plot(timeValues,self.waveform)
         ax3.axvline(intRegion[0], color = 'red', label = 'Integration region')
         ax3.axvline(triggerTime, color = 'black', label = 'trigger')
+        ax3.plot([ ],[ ],' ', label = f'Event Number: {self.eventNum}')
         ax3.axvline(intRegion[1], color = 'red')
         ax3.set_xlabel('Time (ns)')
         ax3.legend(loc = 'best')
         ax3.set_ylabel('')
         
-        plt.show()
+        # plt.show()
         
     
     
@@ -127,8 +128,12 @@ class Coincidence:
         #   channel that event is on.                                   #
         #################################################################
         self.Events.append(event)
-        self.Channels[channel]+=1
         
+        if isinstance(channel,int):
+            self.Channels[channel]+=1
+        elif isinstance(channel,list):
+            for i in channel:
+                self.Channels[i]+=1
         
     def calcTimeDiff(self):
         #################################################################
@@ -144,6 +149,29 @@ class Coincidence:
             for j in range(len(self.Events)):
                 self.timeDiff[self.Events[i].Ch][self.Events[j].Ch] += (self.Events[i].t - self.Events[j].t)
                 
+    def sumLSCEnergies(self,LSCChannels):
+        
+        #################################################################
+        #   Combine the two LSC energies into one. This is done using   #
+        #   vector magnitude calculations.                              #
+        #################################################################
+        #   Variables:                                                  #
+        #       - channelDict (dictionary): Dictionary produced by the  #
+        #           read in channelnames function                       #
+        #################################################################
+        
+        
+        sumsquare = 0 #Start summing the energies of the two LSC PMTs
+        Channels = [] #Make a list of which channels have data in them for the LSC
+        for event in self.Events: #Loop through all the events in the class
+            if event.Ch in LSCChannels: #if the events channel number is in the list of all LSC channels then square its energy and add it to the sumsquare variable
+                sumsquare += event.E**2
+                Channels.append(event.Ch) #Add to the list of active channels
+
+        summedLSC = np.sqrt(sumsquare) #Take the square root of the sum-squared energies
+        
+        return summedLSC, Channels
+            
 
 class Detector:
     ##########################################################################################
@@ -171,13 +199,14 @@ class Detector:
     #                                    and the other 16 channels of the digitizer.         #
     ##########################################################################################
     
-    def __init__(self,Ch,dataName):
+    def __init__(self,Ch,dataName,channelName):
         self.events = [] #List of all the events that are in this object
         self.t = [] #List of the time for each event
         self.E = [] #List of the energy for each event
         self.flag = [] #List of the flags for each event
         self.ch = Ch #Integer for the channel number for this object.
         self.dataName = dataName #Name of the data
+        self.channelName = channelName #Name of the channel from CoMPASS.
         self.tDiff = [[] for _ in range(16)] #16xn array for the time difference between channels for each event.
         self.Ehist = [] #Binned histogram for the Energy hist
         self.EhistBins = [] #Bins for the energy hist
@@ -186,7 +215,7 @@ class Detector:
     
 
         
-    def AddEvent(self,event,tDiff):
+    def AddEvent(self,event,tDiff = [0]*16):
         #################################################################
         #   Function that appends a new event to this class. Note that  #
         #   this class will always store events that have the same      #
@@ -200,7 +229,7 @@ class Detector:
         for i in range(len(tDiff)):
             self.tDiff[i].append(tDiff[i])
             
-    def EnergyHist1DPlot(self, ax, ChBins = None, BinRange = None, BinEdges = None, counts = None, norm = False, log = False):
+    def EnergyHist1DPlot(self, ax, ChBins = None, BinRange = None, BinEdges = None, counts = None, norm = False, log = False,rateNorm = True):
         #############################################################################
         #   This is a function that plots the energy spectra of a given event.      #
         #   The inputs of this function are the detector object itself, the axis    #
@@ -222,10 +251,17 @@ class Detector:
         #############################################################################
         
         if ChBins is not None and BinRange is not None:
-            self.Ehist, self.EhistBins = BinHistograms(self.E,BinRange,ChBins) #Calls the bin histogram function to bin the data. 
-            ax.hist(self.EhistBins[:-1],bins =self.EhistBins,density = norm,weights=self.Ehist/(self.t[-1] - self.t[0]),histtype = 'step',label = f'{detectors[f'Channel {self.ch}'][0]} {self.dataName}', log = log,linewidth = 3) #Plot the data on the provided histogram. Note that this data is always rate normalized. 
+            if rateNorm:
+                self.Ehist, self.EhistBins = BinHistograms(self.E,BinRange,ChBins) #Calls the bin histogram function to bin the data. 
+                # ax.hist(self.EhistBins[:-1],bins =self.EhistBins,density = norm,weights=self.Ehist/(self.t[-1] - self.t[0]),histtype = 'step',label = f'{detectors[f'Channel {self.ch}'][0]} {self.dataName}', log = log,linewidth = 3) #Plot the data on the provided histogram. Note that this data is always rate normalized. 
+                ax.hist(self.EhistBins[:-1],bins =self.EhistBins,density = norm,weights=self.Ehist/(self.t[-1] - self.t[0]),histtype = 'step',label = f'{self.channelName} {self.dataName}', log = log,linewidth = 3) #Plot the data on the provided histogram. Note that this data is always rate normalized. 
+            else:
+                self.Ehist, self.EhistBins = BinHistograms(self.E,BinRange,ChBins) #Calls the bin histogram function to bin the data. 
+                # ax.hist(self.EhistBins[:-1],bins =self.EhistBins,density = norm,weights=self.Ehist/(self.t[-1] - self.t[0]),histtype = 'step',label = f'{detectors[f'Channel {self.ch}'][0]} {self.dataName}', log = log,linewidth = 3) #Plot the data on the provided histogram. Note that this data is always rate normalized. 
+                ax.hist(self.EhistBins[:-1],bins =self.EhistBins,density = norm,weights=self.Ehist,histtype = 'step',label = f'{self.channelName} {self.dataName}', log = log,linewidth = 3) #Plot the data on the provided histogram. Note that this data is always rate normalized. 
+                
         else:
-            ax.hist(BinEdges[:-1],bins = BinEdges, density = norm, weights = counts/(self.t[-1] - self.t[0]),histtype = 'step',label = f'{detectors[f'Channel {self.ch}'][0]} {self.dataName}', log = log,linewidth = 3)
+            ax.hist(BinEdges[:-1],bins = BinEdges, density = norm, weights = counts/(self.t[-1] - self.t[0]),histtype = 'step',label = f'{self.channelName} {self.dataName}', log = log,linewidth = 3)
             
         
 
@@ -240,7 +276,7 @@ class Detector:
         h = ax.hist2d(self.t, self.E, bins = (TimeBinRange,ChBinRange))
         fig.colorbar(h[3],ax=ax)
         
-        ax.set_title(detectors[f'Channel {self.ch}'][0])
+        ax.set_title(f'{self.channelName} energy stability')
         ax.set_xlabel('Trigger Time (ns)')
         ax.set_ylabel('Integral (ADC) Channel')
         
@@ -254,7 +290,7 @@ class Detector:
             flagDictionary[i] +=1
             
         ax.bar(range(len(flagDictionary)), list(flagDictionary.values()),align = 'center')
-        ax.set_title(f'{detectors[f'Channel {self.ch}'][0]} flag distribution')
+        ax.set_title(f'{self.channelName} flag distribution')
         ax.set_yscale('log')
         ax.set_xticks(range(len(flagDictionary)), list(flagDictionary.keys()),rotation = 70)
         ax.set_ylabel('Number of Events')
@@ -305,18 +341,49 @@ class totalCoinc:
                 chInd.append(i) #Decimal number for the channel -- Note that previously we have used binary, and this is now in decimal. 
         
         
-        for i in chInd: #Loops over the number of detectors in the coincidence then makes 'n' blank detectors objects for 'n' channels. 
-            self.detectors.append(Detector(i,self.dataName)) #Creates a blank list of detectors that correspond to the number of channels in coincidence. 
+        # for i in chInd: #Loops over the number of detectors in the coincidence then makes 'n' blank detectors objects for 'n' channels. 
+        #     self.detectors.append(Detector(i,self.dataName,detectors[f'Channel {i}'][0])) #Creates a blank list of detectors that correspond to the number of channels in coincidence. 
          
+        # print(self.Coincidences[0])
+        try:
+            if len(self.Coincidences[0].Events) != len(chInd):
+                summed = True
+                for i in range(len(self.Coincidences[0].Events)):
+                    if isinstance(self.Coincidences[0].Events[i],int):
+                        self.detectors.append(Detector(i,self.dataName,'Summed LSC'))
+                    else:
+                        self.detectors.append(Detector(4,self.dataName,'Summed LSC'))
+            else: 
+                summed = False
+                for i in chInd: #Loops over the number of detectors in the coincidence then makes 'n' blank detectors objects for 'n' channels. 
+                    self.detectors.append(Detector(i,self.dataName,detectors[f'Channel {i}'][0])) #Creates a blank list of detectors that correspond to the number of channels in coincidence. 
+         
+        except:
+            pass
+            # print(self.Coincidences)
+            # print(self.Coincidences[0])
+        # summed = False         
+        if not summed:
         #God I hope this doesn't run too slowly...
-        for i, coinc in enumerate(self.Coincidences): #Loops through all of the events in the coincidence
-            for k, event in enumerate(coinc.Events): #Loops through all of the events within that coincidence object. 
-                for j, ch in enumerate(chInd): #Loops though every channel that is in this coincidence. 
-                    if event.Ch == ch: #If the channel of the event matches the current channel, save that event.
-                        # print(coinc.timeDiff[ch])
-                        self.detectors[j].AddEvent(event,coinc.timeDiff[ch]) #Use the AddEvent method in the detectors class to add this event to that object. 
+            for i, coinc in enumerate(self.Coincidences): #Loops through all of the events in the coincidence
+                for k, event in enumerate(coinc.Events): #Loops through all of the events within that coincidence object. 
+                    for j, ch in enumerate(chInd): #Loops though every channel that is in this coincidence. 
+                        if event.Ch == ch: #If the channel of the event matches the current channel, save that event.
+                            # print(coinc.timeDiff[ch])
+                            self.detectors[j].AddEvent(event,coinc.timeDiff[ch]) #Use the AddEvent method in the detectors class to add this event to that object. 
+        else:
+            for i, coinc in enumerate(self.Coincidences): #Loops through all of the events in the coincidence
+                for k, event in enumerate(coinc.Events): #Loops through all of the events within that coincidence object.
+                    for j in range(len(self.Coincidences[0].Events)):
+                    # for j, ch in enumerate(chInd): #Loops though every channel that is in this coincidence. 
+                        if isinstance(event.Ch, int):
+                            if event.Ch == self.Coincidences[0].Events[j]:
+                                self.detectors[j].AddEvent(event,coinc.timeDiff[ch]) #Use the AddEvent method in the detectors class to add this event to that object.
+                        else:
+                            self.detectors[j].AddEvent(event)
+                                
     
-    def EnergyHist1D(self, Bins, Binrange, saveFilePath, fileName, norm, log, scale, additionalData = []):
+    def EnergyHist1D(self, Bins, Binrange, saveFilePath, fileName, norm, log, scale, rateNorm = True, additionalData = []):
         #################################################################
         #   This function plots the 1D spectra of the given spectra.    #
         #   Currently I have not fully implemented a system to handle   #
@@ -368,14 +435,14 @@ class totalCoinc:
         if nrows == 1: #The way subplots works is annoying, and if there is only 1 row, then the index for ax is 1D. If there are n > 2 rows then its a 2D index. 
             
             for i,coinc in enumerate(self.detectors): #Loops through all the detectors. 
-                coinc.EnergyHist1DPlot(ax = ax[i], ChBins =Bins[i], BinRange = Binrange[i], norm = norm, log =  log) #plot the 1D hist for the detector, passing the axis it is plotted on. 
+                coinc.EnergyHist1DPlot(ax = ax[i], ChBins =Bins[i], BinRange = Binrange[i], norm = norm, log =  log,rateNorm = rateNorm) #plot the 1D hist for the detector, passing the axis it is plotted on. 
                 
                 
                 if len(additionalData) != 0: #if the length of the additional data is 0 (blank array) then plot the additional data. 
                     for j in additionalData: #Loop through all the different data series. 
                         for k, coinc2 in enumerate(j.detectors): #Loop through the detectors in the chosen totalCoinObject.
                             if coinc2.ch == coinc.ch: #Check if this detector has the same channel number as the series plotted by "self"
-                                coinc2.EnergyHist1DPlot(ax = ax[i], ChBins =Bins[i], BinRange = Binrange[i], norm = norm, log =  log) #Plot the additional data on the same plot. 
+                                coinc2.EnergyHist1DPlot(ax = ax[i], ChBins =Bins[i], BinRange = Binrange[i], norm = norm, log =  log,rateNorm = rateNorm) #Plot the additional data on the same plot. 
                 
                 # # This is currently not functioning, so ignore. 
                 # try:
@@ -391,7 +458,7 @@ class totalCoinc:
             col = 0
             
             for i, coinc in enumerate(self.detectors): #I think this is wrong, but I haven't tested it yet. 
-                coinc.EnergyHist1DPlot(ax = ax[row], chBins =Bins[i], BinRange = Binrange[i], norm = norm, log =  log)
+                coinc.EnergyHist1DPlot(ax = ax[row], chBins =Bins[i], BinRange = Binrange[i], norm = norm, log =  log,rateNorm = rateNorm)
                 
                 col += 1
                 if col == ncols:
@@ -622,6 +689,40 @@ def readInFile(filepath,CoincWindow):
             i.calcTimeDiff()
     return events,coinc #Return the list of events and the coincidences.       
           
+def sumLSC(coincidences,channelDict):
+    #########################################################
+    #   Function that looks through all of the coincidence  #
+    #   data then sums the LSC data and stores it as a new  #
+    #   event. Take this new event, plus the non-LSC events #
+    #   and add them to a new coincidence event.            #
+    #########################################################
+    #   Variables:                                          #
+    #       - coincidences (list): List of all coincidence  #
+    #           objects.                                    #
+    #       - channelDict (dictionary): Dictionary of the   #
+    #           channel labels                              #
+    #########################################################
+    
+    LSCChannels = getLSCChannels(channelDict) #Get the list of channels for the LSC
+    
+    summedEvents,summedCoincs = [],[] #Create new arrays that will store the summed LSC events and the coincidence's for the summed LSC events. 
+    
+    for i,coinc in enumerate(coincidences): #Look through all the coincidence data
+        summedE,channels = coinc.sumLSCEnergies(LSCChannels) #Calculate the summed LSC energy for th egiven coincidence
+        
+        summedEvents.append(event(t = 'N/A', E = summedE, flag = 'NONE', Ch = 'N/A', eventNum = 'N/A')) #Create a new event with the summed energy, putting in N/A for all not applicable fields
+        summedCoincs.append(Coincidence()) #intiiallize a new coincidence object to hold the summed coincidences. 
+        
+        
+        summedCoincs[-1].AddEvent(summedEvents[-1], channel = channels) #Add in the newest event with the summed LSC energy to this coincidence. 
+        
+        for i,events in enumerate(coinc.Events): #look through all the events in this coincidence object.
+            if events.Ch not in LSCChannels: #Check to see if the current event is in the list of LSC channels
+                summedCoincs[-1].AddEvent(events,channel = events.Ch) #If not, add that event to the new coincidence object.
+                
+    return summedEvents,summedCoincs
+              
+
 def readInInit(initfilepath):
     ##########################################################
     #   This function reads in the init file to get some     #
@@ -674,6 +775,16 @@ def readInInit(initfilepath):
 
     return list(mainData),fileName,coincEnabled,coincWindow,coincChannelBin
 
+def ReadInWaveformData(settings,channel):
+    
+    tree = ET.parse(settings) #Parse the settings.xml file into a tree structure
+    root = tree.getroot()
+    
+    #Start by looking for the data from the channel if we can't find a specific value then we can look earlier in the file. 
+    for ch in root.iter("channel"):
+        
+        indexElem = ch.find("index") #Find the index value to check for channel number. 
+
 def ReadInChannelNames(settings):
     ##############################################################################################
     #   Function that reads in the settings.xml file produced by CoMPASS to grab the channel     #
@@ -721,7 +832,23 @@ def ReadInChannelNames(settings):
     # Print the resulting dictionary: {channel_index: label, ...}
     return channels
 
+def getLSCChannels(channels):
+    #################################################################
+    #   Small function to parse through the detectors dictionary    #
+    #   and return what channels correspond to the LSC              #
+    #################################################################
+    #   Variables:                                                  #
+    #       channels: Dictionary for the channel names.             #
+    #################################################################
+    
+    matches = [key for key, value in channels.items() if "LS" in value[0] or "LSC" in value[0] or "Left" in value[0] or "Right" in value[0]] #Loops through all entries in the dictionary to see which ones contain LS or LSC
 
+    LSCChannels = [] #Creates a blank array to hold just the channel numbers for the LSC
+    for chan in matches: 
+        LSCChannels.append(int(chan.split('Channel')[1])) #Converts the key to just an integer for the channel number
+        
+    return LSCChannels
+    
 def sortTotalCoincidences(coincidences,CoincCHList,name):
     #############################################################################################
     #   Sorts all of the coincidence events into the totalCoinc class, separating them based    #
@@ -810,6 +937,7 @@ detectors = ReadInChannelNames(settingsFilePath)
 #Read in the data from the csv file
 events,coinc = readInFile(filepath=mainData[0][0],CoincWindow=coincWindow)
 
+summedevents,summedcoinc = sumLSC(coincidences = coinc,channelDict = detectors)
 
 
 uniqueCoinc = []
@@ -839,7 +967,9 @@ else:
     #If coincidences are enebled then it will sort all the data based on the coincidence window. 
         if coincEnabled: #If true this will sort the events by the coincidence they have. 
             totalCoincList = sortTotalCoincidences(coincidences=coinc,CoincCHList=CoincChannels,name=mainData[0][1])
-            
+            print('Start Summing LSC Data')
+            summedTotalCoincList = sortTotalCoincidences(coincidences=summedcoinc,CoincCHList=CoincChannels, name = f'{mainData[0][1]} - Summed LSC')
+            print(f'Coincidence Channels {CoincChannels}')
             additionalCoincidences = []
             if len(mainData) > 1: #If the list of all the data series is > 1 then read in the rest of the data as "Additional Coincidences".
                 i = 1
@@ -872,7 +1002,33 @@ else:
         timeBinRange = [-500,500]
         integralBinRange = [[0,4000],[0,4000],[0,4000]]
         data2 = []
+        
+        for i,coinc in enumerate(summedTotalCoincList):
+            chInd = [] #Set and index to find the channel numbers that are in this coincidence. 
+            for j, ch in enumerate(coinc.coincChannels):
+                if ch != 0:
+                    chInd.append(j)
+            Channels = ",".join(str(x) for x in chInd)
 
+            # for j, coinc2 in enumerate(totalCoincList2):
+            #     if coinc.coincChannels == coinc2.coincChannels:
+            #         data2.append(coinc2)
+            
+            saveFilePath = mainData[0][0].with_suffix('') / 'figures' / f"Coincidence_Channels_{Channels}" / "Summed_LSC"
+            Path(f"{saveFilePath}").mkdir(parents=True, exist_ok=True)
+
+
+            '''
+            self.Coincidences = []
+            self.coincChannels = coincChannels
+            self.detectors = []
+            self.dataName = dataName
+            '''    
+
+            # break
+            coinc.EnergyHist1D(additionalData = additionalCoincidences, Bins = [integralBins,integralBins,integralBins], Binrange = [[0,4000],[0,4000],[0,4000]], saveFilePath = saveFilePath, fileName = fileName, norm = norm, log = log, scale = scale,rateNorm = False)
+            
+            coinc.EnergyHist2D(ChBins = [integralBins,integralBins,integralBins], BinRange = [[0,4000],[0,4000],[0,4000]],saveFilePath = saveFilePath, fileName = fileName, log = log, scale = scale)
 
         for i,coinc in enumerate(totalCoincList):
             chInd = [] #Set and index to find the channel numbers that are in this coincidence. 
@@ -890,7 +1046,7 @@ else:
             plottingStartTime = time.time()
             
             coinc.EnergyHist1D(additionalData = additionalCoincidences, Bins = [integralBins,integralBins,integralBins], Binrange = integralBinRange, saveFilePath = saveFilePath, fileName = fileName, norm = norm, log = log, scale = scale)
-            coinc.fitData(Bins = [integralBins,integralBins,integralBins],Binrange = integralBinRange,truncRange = [1000,2200])
+            # coinc.fitData(Bins = [integralBins,integralBins,integralBins],Binrange = integralBinRange,truncRange = [1000,2200])
             
             E1DTime = time.time()
             print(f'\t Time to Plot 1D Energy Hist: {E1DTime- plottingStartTime}')
