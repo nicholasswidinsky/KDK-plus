@@ -47,14 +47,14 @@ class event:
         self.waveform = waveform
         self.params = params
         
-        self.thresh = params['THRESHOLD']
-        self.CFDDelay = params['CFD_DELAY']
-        self.PURGap = params['PURGAP']
-        self.SGate = params['GATESHORT']
-        self.DiscMode = params['DISCR_MODE']
-        self.gate = params['GATE']
-        self.PreGate = params['GATEPRE']
-        self.PreTrig = params['PRETRG']        
+        # self.thresh = params['THRESHOLD']
+        # self.CFDDelay = params['CFD_DELAY']
+        # self.PURGap = params['PURGAP']
+        # self.SGate = params['GATESHORT']
+        # self.DiscMode = params['DISCR_MODE']
+        # self.gate = params['GATE']
+        # self.PreGate = params['GATEPRE']
+        # self.PreTrig = params['PRETRG']        
         
         
 
@@ -142,9 +142,13 @@ class Coincidence:
     #################################################################################################
     
     def __init__(self):
-        self.Events = []
+        # self.Events = []
         self.Channels = [0]*16
-        self.timeDiff = [[0]*16 for _ in range(16)] #Make a 16x16 array of 0's. These will get updated to be the time difference between channels n and m.
+        # self.timeDiff = [[0]*16 for _ in range(16)] #Make a 16x16 array of 0's. These will get updated to be the time difference between channels n and m.
+        
+        self.Events = np.array([])
+        # self.Channels = np.zeros(16)
+        self.timeDiff = np.zeros((16,16))
         
         
     def AddEvent(self,event,channel):
@@ -153,7 +157,8 @@ class Coincidence:
         #   This function takes an input of an event object, and what   #
         #   channel that event is on.                                   #
         #################################################################
-        self.Events.append(event)
+        # self.Events.append(event)
+        self.Events = np.append(self.Events,event)
         self.Channels[channel]+=1
         
         
@@ -199,7 +204,8 @@ class Detector:
     ##########################################################################################
     
     def __init__(self,Ch,dataName):
-        self.events = [] #List of all the events that are in this object
+        # self.events = [] #List of all the events that are in this object
+        self.length = 0
         self.t = [] #List of the time for each event
         self.E = [] #List of the energy for each event
         self.flag = [] #List of the flags for each event
@@ -233,7 +239,8 @@ class Detector:
         #   channel number.                                             #
         #################################################################
         
-        self.events.append(event)
+        # self.events.append(event)
+        self.length += 1
         self.t.append(event.t)
         self.E.append(event.E)
         self.flag.append(event.flag)
@@ -280,7 +287,7 @@ class Detector:
             ax.hist(BinEdges[:-1],bins = BinEdges, density = norm, weights = counts/(self.t[-1] - self.t[0]),histtype = 'step',label = f'{detectors[f'Channel {self.ch}'][0]} {self.dataName}', log = log,linewidth = 3)
             
         
-        ax.plot([],[],' ', label = f'Events: {len(self.events)}')
+        ax.plot([],[],' ', label = f'Events: {self.length}')
         ax.plot([],[],' ', label = f'Run Time: {round((self.t[-1]-self.t[0])/1e9,3)} s')
         #Set various labels for the plots. 
         ax.set_title(detectors[f'Channel {self.ch}'][0])
@@ -774,6 +781,55 @@ def expFunc(x, n_exp, mu_exp, tau, xLim1,xLim2):
 def gauss_skew(x,n_gauss,sigma,mu_gauss,skew):
     return n_gauss*skewnorm.pdf(x,a = skew, loc = mu_gauss, scale = sigma)  
   
+def readInFile_stream(filepath, CoincWindow,CoincChannels, chParams):
+    
+    coinc_list = []
+    current_coinc = Coincidence()
+    first_event_time = None
+    counter = 0
+
+    with open(filepath) as f:
+        next(f)
+
+        for i, line in enumerate(f):
+            data = line.strip().split(';')
+
+            t = int(data[2]) / 1e3
+            E = int(data[3])
+            ch = int(data[1])
+            flag = data[5]
+
+            # NO waveform
+            evt = event(t=t, E=E, flag=flag, Ch=ch,
+                        eventNum=i, params=chParams[ch],
+                        waveform=None)
+            
+            counter += 1
+            if counter % 100000 == 0:
+                print(f"Read in {counter} events")
+
+            if first_event_time is None:
+                first_event_time = t
+
+            dt = abs(first_event_time - t)
+
+            if dt > CoincWindow:
+                if current_coinc.Channels not in CoincChannels:
+                    del current_coinc
+                else:
+                    coinc_list.append(current_coinc)
+                current_coinc = Coincidence()
+                first_event_time = t
+
+            current_coinc.AddEvent(evt, ch)
+
+        coinc_list.append(current_coinc)
+
+    # compute time differences AFTER building each coincidence
+    for c in coinc_list:
+        c.calcTimeDiff()
+
+    return coinc_list  
                         
 def readInFile(filepath,CoincWindow,chParams,waveform = False,savefilePath = None):
     #################################################################
@@ -788,7 +844,7 @@ def readInFile(filepath,CoincWindow,chParams,waveform = False,savefilePath = Non
     
     # events = [] #creates blank arrays for all the event objects and the coincidence objects.
     coinc = []
-    
+    counter = 0
     
     with open(filepath) as f: #Open the file
         next(f) #Skip the header
@@ -799,7 +855,12 @@ def readInFile(filepath,CoincWindow,chParams,waveform = False,savefilePath = Non
                 eventWaveform = [int(num) for num in data[7:]]
             else:
                 eventWaveform = None
+                
+                
             events = event(t=int(data[2])/1e3,E=int(data[3]),flag=data[5],Ch = int(data[1]),eventNum=i, waveform =eventWaveform,params = chParams[int(data[1])]) #Take the data from each line and create a new event object.
+            counter += 1
+            if counter % 100000 == 0:
+                print(f"Read in {counter} events")
             #numbers = [int(num) for num in numbers] 
             # events[-1].plotWaveform()
             if i==0:  #The first time we loop through we need to grab the first event ot start the coincidences. 
@@ -1094,7 +1155,9 @@ waveSaveFilePath = mainData[0][0].with_suffix('') / 'figures' / "waveforms"
 Path(f"{waveSaveFilePath}").mkdir(parents=True, exist_ok=True)
 
 #Read in the data from the csv file
-coinc = readInFile(filepath=mainData[0][0],CoincWindow=coincWindow, savefilePath=waveSaveFilePath, chParams = ChannelParameters)
+coinc = readInFile_stream(filepath=mainData[0][0],CoincWindow=coincWindow, CoincChannels = CoincChannels,chParams = ChannelParameters)
+# coinc = readInFile(filepath=mainData[0][0],CoincWindow=coincWindow, savefilePath=waveSaveFilePath, chParams = ChannelParameters)
+
 
 
 
