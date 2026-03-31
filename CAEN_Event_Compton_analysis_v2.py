@@ -14,6 +14,7 @@ from numba_stats import truncnorm, truncexpon
 from scipy.stats import skewnorm
 from scipy.signal import find_peaks
 from scipy.ndimage import gaussian_filter1d
+import random
 
 startTime = time.time()
 
@@ -37,18 +38,32 @@ class event:
     #       - Ch (int): Channel number for the event                           #
     ############################################################################
     
-    def __init__(self,t,E,flag,Ch,eventNum,waveform = []):
+    def __init__(self,t,E,flag,Ch,eventNum,params,waveform = []):
         self.t = t
         self.E = E
         self.flag = flag
         self.Ch = Ch
         self.eventNum = eventNum
         self.waveform = waveform
+        self.params = params
+        
+        self.thresh = params['THRESHOLD']
+        self.CFDDelay = params['CFD_DELAY']
+        self.PURGap = params['PURGAP']
+        self.SGate = params['GATESHORT']
+        self.DiscMode = params['DISCR_MODE']
+        self.gate = params['GATE']
+        self.PreGate = params['GATEPRE']
+        self.PreTrig = params['PRETRG']        
+        
+        
+
+        
         
     def plotWaveform(self,savefigPath):
         
-        intRegion = [50,350]
-        triggerTime = 125
+        # intRegion = [50,350]
+        # triggerTime = 125
         
         timeValues = np.linspace(0,2*len(self.waveform),len(self.waveform)) #It looks like the sampling rate is 2 ns/sample. Thus to find the total event time we multiply th length of the array by 2 ns/sample. 
         baseline = np.average(self.waveform[0:30])
@@ -67,6 +82,7 @@ class event:
         # Bottom plot spanning both columns
         ax3 = fig.add_subplot(gs[1, :])
         plt.tight_layout()
+        plt.subplots_adjust(left = 0.1)
         
         # indL = np.where(timeValues == intRegion[0])
         # indU = np.where(timeValues == intRegion[1])
@@ -77,32 +93,35 @@ class event:
         # ax1.axvline(intRegion[0], color = 'red', label = 'Integration region')
         # ax1.axvline(triggerTime, color = 'black', label = 'trigger')
         # ax1.axvline(intRegion[1], color = 'red')
-        ax1.set_xlim([intRegion[0]-50,intRegion[1]+50])
+        # ax1.set_xlim([intRegion[0]-50,intRegion[1]+50])
         ax1.set_xlabel('Time (ns)')
         # ax1.legend(loc = 'best')
-        ax1.set_ylabel('')
+        ax1.set_ylabel('ADC Channel')
         
         ax2.plot(timeValues,baseline - self.waveform)
         # ax2.axvline(intRegion[0], color = 'red', label = 'Integration region')
         # ax2.axvline(triggerTime, color = 'black', label = 'trigger')
         # ax2.axvline(intRegion[1], color = 'red')
         ax2.axhline(baseline - baseline, color = 'black')
-        ax2.set_xlim([intRegion[0]-50,intRegion[1]+50])
+        # ax2.set_xlim([intRegion[0]-50,intRegion[1]+50])
         ax2.set_xlabel('Time (ns)')
         # ax2.legend(loc = 'best')
-        ax2.set_ylabel('')
+        ax2.set_ylabel('ADC Channel')
     
         
         
         
         
         ax3.plot(timeValues,self.waveform)
+        ax3.plot([],[],' ', label = f'Integral: {self.E}')
+        ax3.plot([],[],' ', label = f'flag: {self.flag}')
+        
         # ax3.axvline(intRegion[0], color = 'red', label = 'Integration region')
         # ax3.axvline(triggerTime, color = 'black', label = 'trigger')
         # ax3.axvline(intRegion[1], color = 'red')
         ax3.set_xlabel('Time (ns)')
-        # ax3.legend(loc = 'best')
-        ax3.set_ylabel('')
+        ax3.legend(loc = 'best')
+        ax3.set_ylabel('ADC Channel')
         
         plt.savefig(f'{savefigPath}/Channel_{self.Ch}_Event_{self.eventNum}_waveform.png')
         plt.close()
@@ -261,7 +280,8 @@ class Detector:
             ax.hist(BinEdges[:-1],bins = BinEdges, density = norm, weights = counts/(self.t[-1] - self.t[0]),histtype = 'step',label = f'{detectors[f'Channel {self.ch}'][0]} {self.dataName}', log = log,linewidth = 3)
             
         
-
+        ax.plot([],[],' ', label = f'Events: {len(self.events)}')
+        ax.plot([],[],' ', label = f'Run Time: {round((self.t[-1]-self.t[0])/1e9,3)} s')
         #Set various labels for the plots. 
         ax.set_title(detectors[f'Channel {self.ch}'][0])
         ax.set_xlabel('Integral (ADC Channel)')
@@ -663,7 +683,7 @@ class totalCoinc:
         plt.subplots_adjust(left = 0.06,wspace = 0.15,hspace = 0.25,top = 0.98,bottom = 0.04)
         
         for i,coinc in enumerate(self.detectors):
-            Binrange = [0,4000]
+            Binrange = [0,4050]
             
             ChBinRange = np.linspace(Binrange[0],Binrange[1],ChBins[i])
             
@@ -755,7 +775,7 @@ def gauss_skew(x,n_gauss,sigma,mu_gauss,skew):
     return n_gauss*skewnorm.pdf(x,a = skew, loc = mu_gauss, scale = sigma)  
   
                         
-def readInFile(filepath,CoincWindow,savefilePath = None):
+def readInFile(filepath,CoincWindow,chParams,waveform = False,savefilePath = None):
     #################################################################
     #   Reads in the csv file, and parses it into the coincidences. #
     #                                                               #
@@ -766,7 +786,7 @@ def readInFile(filepath,CoincWindow,savefilePath = None):
     #         given coincidence.                                    #
     #################################################################
     
-    events = [] #creates blank arrays for all the event objects and the coincidence objects.
+    # events = [] #creates blank arrays for all the event objects and the coincidence objects.
     coinc = []
     
     
@@ -775,16 +795,20 @@ def readInFile(filepath,CoincWindow,savefilePath = None):
 
         for i,line in enumerate(f): #Read the file in line by line. This is lighter on the memory and faster overall. 
             data = line.split('\n')[0].split(';') #Take the line and split it first along the newline character, then the semi-colon delimeter. 
-            events.append(event(t=int(data[2])/1e3,E=int(data[3]),flag=data[5],Ch = int(data[1]),eventNum=i, waveform =[int(num) for num in data[7:]])) #Take the data from each line and create a new event object.
+            if waveform:
+                eventWaveform = [int(num) for num in data[7:]]
+            else:
+                eventWaveform = None
+            events = event(t=int(data[2])/1e3,E=int(data[3]),flag=data[5],Ch = int(data[1]),eventNum=i, waveform =eventWaveform,params = chParams[int(data[1])]) #Take the data from each line and create a new event object.
             #numbers = [int(num) for num in numbers] 
             # events[-1].plotWaveform()
             if i==0:  #The first time we loop through we need to grab the first event ot start the coincidences. 
-                firstCoincEvent = events[0] #Set the save the event as the "firstCoincEvent" This is the event that is the first event in any arb. coincidence. 
+                firstCoincEvent = events #Set the save the event as the "firstCoincEvent" This is the event that is the first event in any arb. coincidence. 
                 coinc.append(Coincidence()) #Make a new coincidence object.
             else: #Every other time check if the current event falls within the coinc window of the "firstCoincEvent". 
-                dt = np.abs(firstCoincEvent.t - events[-1].t) #Calculate the time diff. 
+                dt = np.abs(firstCoincEvent.t - events.t) #Calculate the time diff. 
                 if dt > CoincWindow: #Check if the coinc is outisde the coinc window. 
-                    firstCoincEvent = events[-1] #Set the firstCoincEvent to the latest event. 
+                    firstCoincEvent = events #Set the firstCoincEvent to the latest event. 
                     coinc.append(Coincidence()) #Make a new coincidence object.
                     
                     
@@ -792,12 +816,12 @@ def readInFile(filepath,CoincWindow,savefilePath = None):
             #     events[-1].plotWaveform(savefilePath)
             
             
-            coinc[-1].AddEvent(event = events[-1],channel = events[-1].Ch) #Add the latest event to the last coinc event in the list.
+            coinc[-1].AddEvent(event = events,channel = events.Ch) #Add the latest event to the last coinc event in the list.
             
         #Once all the coincidences are read in, loop over them all and calculate the time differences. 
         for i in coinc:
             i.calcTimeDiff()
-    return events,coinc #Return the list of events and the coincidences.       
+    return coinc #Return the list of events and the coincidences.       
           
 def readInInit(initfilepath):
     ##########################################################
@@ -818,6 +842,12 @@ def readInInit(initfilepath):
         dataName = [lines[1].split("\n")[0].split("\t")[1]] #Grabs the name of the main data series you are plotting
         fileName = lines[0].split("\n")[0].split('\t')[1].split('/')[-1].split('.CSV')[0] #Splits the file name from the filepath
         coincEnabled = lines[2].split("\n")[0].split('\t')[1] #Boolean for enabling coincidences
+        
+        if coincEnabled == 'True':
+            coincEnabled = True
+        elif coincEnabled == 'False':
+            coincEnabled = False
+        
         coincWindow = int(lines[3].split("\n")[0].split('\t')[1]) #Grab the coincidence window from the second line
         CoincChannelsList = lines[4].split("\n")[0].split('\t')[1:] # grab the list of all the coinc channels
         EnableAdditionalData = lines[5].split("\n")[0].split('\t')[1] #Boolean for plotting additional data on the 1D histograms. 
@@ -897,6 +927,82 @@ def ReadInChannelNames(settings):
 
     # Print the resulting dictionary: {channel_index: label, ...}
     return channels
+
+def GetDefaultParameters(settings):
+    tree = ET.parse(settings)
+    root = tree.getroot()
+
+    # Initialize an empty dictionary to store the default data. 
+    DefaultValues = {"THRESHOLD": None,"CFD_DELAY": None,"PURGAP": None,"GATESHORT": None,"DISCR_MODE": None,"GATE": None,"GATEPRE": None,"PRETRG": None}
+    
+    baseLabel = 'SRV_PARAM_CH_'
+    keyLabels = ['THRESHOLD','CFD_DELAY','PURGAP','GATESHORT','DISCR_MODE','GATE','GATEPRE','PRETRG']
+
+    # Iterate over every <channel> element in the file
+    for ch in root.iter("parameters"):
+
+        # Search through each <entry> element under <values>
+        for entry in ch.findall("entry"):
+            # Each entry has a <key> and <value>
+            key_elem = entry.find("key")
+            values_elem = entry.find("value")
+            value_elem = values_elem.find("value")
+            
+            # Check if this entry is the label for the channel
+            if key_elem is not None and key_elem.text.split(baseLabel)[-1] in keyLabels:
+                # If found, extract the label text (safely)
+                ind = keyLabels.index(key_elem.text.split(baseLabel)[-1])
+                value = value_elem.text.strip() if value_elem is not None else None
+                    
+                try:
+                    DefaultValues[keyLabels[ind]] = float(value)
+                except:
+                    DefaultValues[keyLabels[ind]] = value
+
+    return DefaultValues
+
+def GetChannelData(settings):
+    tree = ET.parse(settings)
+    root = tree.getroot()
+    
+    DefaultValues = GetDefaultParameters(settings)
+    ChannelParams = [DefaultValues.copy() for _ in range(16)]
+
+    
+    baseLabel = 'SRV_PARAM_CH_'
+    keyLabels = ['THRESHOLD','CFD_DELAY','PURGAP','GATESHORT','DISCR_MODE','GATE','GATEPRE','PRETRG']
+    
+    for ch in root.iter("channel"):
+        # Find the <index> tag within this <channel> element
+        
+        index_elem = ch.find("index")
+        # Find the <values> tag, which contains parameter entries like labels
+        values_elem = ch.find("values")
+        
+        # Continue only if both index and values are found
+        if index_elem is not None and values_elem is not None:
+            
+            value = None
+            # Search through each <entry> element under <values>
+            for entry in values_elem.findall("entry"):
+                # Each entry has a <key> and <value>
+                key_elem = entry.find("key")
+                value_elem = entry.find("value")
+                
+                # Check if this entry is the label for the channel
+                if key_elem is not None and key_elem.text.split(baseLabel)[-1] in keyLabels:
+                    # If found, extract the label text (safely)
+                    ind = keyLabels.index(key_elem.text.split(baseLabel)[-1])
+                    value = value_elem.text.strip() if value_elem is not None else None
+                    if value is not None:
+                        try:
+                            ChannelParams[int(index_elem.text)][keyLabels[ind]] = float(value)
+
+                        except:
+                            ChannelParams[int(index_elem.text)][keyLabels[ind]] = value
+
+
+    return ChannelParams
 
 
 def sortTotalCoincidences(coincidences,CoincCHList,name):
@@ -982,12 +1088,13 @@ settingsFilePath = mainData[0][0].parent.parent / 'settings.xml'
 
 #Read in the detector names from the settings file. 
 detectors = ReadInChannelNames(settingsFilePath)
+ChannelParameters = GetChannelData(settingsFilePath)
 
 waveSaveFilePath = mainData[0][0].with_suffix('') / 'figures' / "waveforms"
 Path(f"{waveSaveFilePath}").mkdir(parents=True, exist_ok=True)
 
 #Read in the data from the csv file
-events,coinc = readInFile(filepath=mainData[0][0],CoincWindow=coincWindow, savefilePath=waveSaveFilePath)
+coinc = readInFile(filepath=mainData[0][0],CoincWindow=coincWindow, savefilePath=waveSaveFilePath, chParams = ChannelParameters)
 
 
 
@@ -1071,12 +1178,49 @@ else:
             
             coinc.EnergyHist1D(additionalData = additionalCoincidences, Bins = [integralBins,integralBins,integralBins], Binrange = integralBinRange, saveFilePath = saveFilePath, fileName = fileName, norm = norm, log = log, scale = scale)
             # coinc.fitData(Bins = [integralBins,integralBins,integralBins],Binrange = integralBinRange,truncRange = [1000,2200])
-            coinc.fitData(Bins = [integralBins,integralBins,integralBins], Binrange = integralBinRange, saveFilePath = saveFilePath, fileName = fileName, norm = norm, log = log)
+            try:
+                coinc.fitData(Bins = [integralBins,integralBins,integralBins], Binrange = integralBinRange, saveFilePath = saveFilePath, fileName = fileName, norm = norm, log = log)
+            except:
+                pass
+            
+            
+            # pileUpCoinc = totalCoinc(coinc.coincChannels,dataName = 'Pile Up Data')
+            # nonpileUpCoinc = totalCoinc(coinc.coincChannels, dataName = 'non-pile Up data')
+            # for c in coinc.Coincidences:
+            #     for e in c.Events:
+            #         if '0xc' in e.flag:
+            #             pileUpCoinc.Coincidences.append(c)
+            #         else:
+            #             nonpileUpCoinc.Coincidences.append(c)
+                        
+            # pileUpCoinc.SortChannels()
+            # nonpileUpCoinc.SortChannels()
+            
+            # PUsaveFilePath = mainData[0][0].with_suffix('') / 'figures' / f"Coincidence_Channels_{Channels}" / "Pile-up_data"
+            # Path(f"{PUsaveFilePath}").mkdir(parents=True, exist_ok=True)
+            
+            # pileUpCoinc.EnergyHist1D(additionalData = additionalCoincidences, Bins = [integralBins,integralBins,integralBins], Binrange = integralBinRange, saveFilePath = PUsaveFilePath, fileName = f"{fileName}_pileUp", norm = norm, log = log, scale = scale)
+            
+            # pileUpCoinc.Stabilityplots(ChBins = [integralBins,integralBins,integralBins],saveFilePath = saveFilePath, fileName = f"{fileName}_pileUp", scale = scale)
+            
+            # nonpileUpCoinc.EnergyHist1D(additionalData = additionalCoincidences, Bins = [integralBins,integralBins,integralBins], Binrange = integralBinRange, saveFilePath = PUsaveFilePath, fileName = f"{fileName}_non_pileUp", norm = norm, log = log, scale = scale)
+            
+            # nonpileUpCoinc.Stabilityplots(ChBins = [integralBins,integralBins,integralBins],saveFilePath = saveFilePath, fileName = f"{fileName}_non_pileUp", scale = scale)
+            
+            # PUWsaveFilePath = mainData[0][0].with_suffix('') / 'figures' / f"Coincidence_Channels_{Channels}" / "Pile-up_data" / "Pile-up_waveforms"
+            # nPUWsaveFilePath = mainData[0][0].with_suffix('') / 'figures' / f"Coincidence_Channels_{Channels}" / "Pile-up_data" / "non-Pile-up_waveforms"
+            
+            # Path(f"{PUWsaveFilePath}").mkdir(parents=True, exist_ok=True)
+            # Path(f"{nPUWsaveFilePath}").mkdir(parents=True, exist_ok=True)
+            
+            # for i in range(10):
+            #     random.choice(pileUpCoinc.Coincidences).Events[0].plotWaveform(PUWsaveFilePath)
+            #     random.choice(nonpileUpCoinc.Coincidences).Events[0].plotWaveform(nPUWsaveFilePath)
             
             E1DTime = time.time()
             print(f'\t Time to Plot 1D Energy Hist: {E1DTime- plottingStartTime}')
             
-            if True:#len(totalCoincList) != 1:
+            if sum(coinc.coincChannels) > 1: #len(totalCoincList) != 1:
                 coinc.EnergyHist2D(ChBins = [integralBins,integralBins,integralBins], BinRange = integralBinRange,saveFilePath = saveFilePath, fileName = fileName, log = log, scale = scale)
             
                 E2DTime = time.time()
