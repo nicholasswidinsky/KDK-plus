@@ -1,11 +1,17 @@
 #include <fstream>
 #include <sstream>
 #include <iostream>
+#include<string>
+#include <filesystem>
 #include "TCanvas.h"
 #include "TProfile.h"
 #include "TH2D.h"
 #include "TF1.h"
 #include "TCutG.h"
+#include <iomanip>   // for std::setprecision
+#include <fstream>   // for std::ofstream
+#include "TMath.h"   // for TMath::Prob
+#include "TSystem.h" // for gSystem->mkdir
 
 // void fit2D_cut() {
 void profile_histogram() {
@@ -19,7 +25,22 @@ void profile_histogram() {
 
 
     //This Tries to open the file. If it fails it returns an error. 
-    std::ifstream file("/home/nick/PhD/KDK+/Annulus_Compton_scatter_V1/2026_01_28/NaI_annulus_LS_2_Cs137_All_NaI_higher_HV/RAW/coinc_sorted/SDataR_NaI_annulus_LS_2_Cs137_All_NaI_higher_HV_coinc_4_5_8.txt");
+    // std::string inputPath("/home/nick/PhD/KDK+/Annulus_Compton_scatter_V1/2026_01_28/NaI_annulus_LS_2_Cs137_All_NaI_higher_HV/RAW/coinc_sorted/SDataR_NaI_annulus_LS_2_Cs137_All_NaI_higher_HV_coinc_4_5_8.txt");
+    std::string inputPath("/home/nick/PhD/KDK+/Daily_LSC_Calibration_testing/2026_04_28/2026_04_28_Daily_LSC_calibration_Cs137_coinc_2/RAW/coinc_sorted/SDataR_2026_04_28_Daily_LSC_calibration_Cs137_coinc_2_coinc_4_5_8.txt");
+    
+    std::filesystem::path filePath(inputPath);
+
+    std::string inputDir      = filePath.parent_path().string();
+    std::string inputBasename = filePath.stem().string();
+    std::string inputFilename = filePath.filename().string();
+
+    std::string outputDir = inputDir + "/" + inputBasename + "_fit_results";
+    gSystem->mkdir(outputDir.c_str(), kTRUE);  // kTRUE creates intermediate dirs
+
+    // Open file using the same variable
+    std::ifstream file(inputPath);
+
+
     if (!file.is_open()) {
         std::cerr << "Error opening file!" << std::endl;
         return;
@@ -161,11 +182,124 @@ for (int k = 0; k < (int)pairs.size(); k++) {
     TF1 *fit = new TF1(fitName.c_str(), "pol1", 300, 1500);
     pro->Fit(fit, "R");
     fit->SetLineColor(kRed);
-    fit->Draw("same");
+    fit->Draw("same");    
+    
+    std::string outputDir = inputDir + "/" + inputBasename + "_fit_results";
+    gSystem->mkdir(outputDir.c_str(), kTRUE);  // kTRUE creates intermediate dirs
+
+
+
+    // // ofstream out(seglist[0] + "_fit_results/Fit_results");
+    // for (int i = 0; i < fit->GetNpar(); i++){
+    //     out << fit->GetParName(i) << " " << fit->GetParameter(i)<< " " << fit->GetParError(i) << endl;
+    // }
+    // out.close();
+
+    Double_t chi2 = fit->GetChisquare();
+    Double_t p0 = fit->GetParameter(0);
+    Double_t p1 = fit->GetParameter(1);
+    Double_t e0 = fit->GetParError(0);
+    Double_t e1 = fit->GetParError(1);
+
+
 
     c->Update();
+    std::string pdfPath = outputDir + "/" + inputBasename + "_" + suffix + ".pdf";
+    c->SaveAs(pdfPath.c_str());
+    std::string pngPath = outputDir + "/" + inputBasename + "_" + suffix + ".png";
+
+    c->SaveAs(pngPath.c_str());
+
 }
 
+
+    // Extract directory and filename from input path
+    // std::string inputPath = "/home/nick/Downloads/data1.csv";
+    // std::string inputPath = file;
+    size_t lastSlash = inputPath.rfind('/');
+    // std::string inputDir      = inputPath.substr(0, lastSlash);
+    // std::string inputFilename = inputPath.substr(lastSlash + 1);
+    // Strip extension from filename
+    size_t dotPos = inputFilename.rfind('.');
+    // std::string inputBasename = (dotPos != std::string::npos) ? inputFilename.substr(0, dotPos) : inputFilename;
+
+    // Create output folder path and make the directory
+
+
+    // Open output file
+    std::string outputFile = outputDir + "/" + inputBasename + "_fit_results.txt";
+    std::ofstream results(outputFile);
+    if (!results.is_open()) {
+        std::cerr << "Error opening results file!" << std::endl;
+        return;
+    }
+
+    // Write header
+    results << "==================================================\n";
+    results << "Fit Results for: " << inputFilename << "\n";
+    results << "==================================================\n\n";
+
+    // Re-run fits and write results for each pair
+    for (int k = 0; k < (int)pairs.size(); k++) {
+        int i = pairs[k].first;
+        int j = pairs[k].second;
+        std::string chI = std::to_string(channelIDs[i]);
+        std::string chJ = std::to_string(channelIDs[j]);
+        std::string suffix  = "ch" + chI + "_vs_ch" + chJ;
+        std::string proName = "pro_" + suffix;
+        std::string fitName = "fit_" + suffix;
+
+        // Retrieve the profile and fit by name from ROOT's directory
+        TProfile *pro = (TProfile*)gDirectory->FindObject(proName.c_str());
+        TF1      *fit = (TF1*)gDirectory->FindObject(fitName.c_str());
+
+        results << "--------------------------------------------------\n";
+        results << "Channel Pair: " << chI << " vs " << chJ << "\n";
+        results << "--------------------------------------------------\n";
+
+        if (!pro || !fit) {
+            results << "  WARNING: Could not retrieve fit objects for this pair.\n\n";
+            continue;
+        }
+
+        // Fit quality
+        double chi2   = fit->GetChisquare();
+        int    ndf    = fit->GetNDF();
+        double chi2ndf = (ndf > 0) ? chi2 / ndf : 0.0;
+        double pValue = TMath::Prob(chi2, ndf);
+
+        results << std::fixed << std::setprecision(6);
+        results << "  Fit Function : pol1 (y = p0 + p1*x)\n";
+        results << "  Fit Range    : " << fit->GetXmin() << " to " << fit->GetXmax() << "\n\n";
+
+        results << "  Chi^2        : " << chi2     << "\n";
+        results << "  NDF          : " << ndf      << "\n";
+        results << "  Chi^2 / NDF  : " << chi2ndf  << "\n";
+        results << "  P-Value      : " << pValue   << "\n\n";
+
+        // Parameter results
+        results << "  Parameters:\n";
+        for (int p = 0; p < fit->GetNpar(); p++) {
+            results << "    p" << p << " (" << fit->GetParName(p) << ")"
+                    << "  = " << fit->GetParameter(p)
+                    << " +/- " << fit->GetParError(p) << "\n";
+        }
+
+        // Profile histogram info
+        results << "\n  Profile Histogram Info:\n";
+        results << "    Entries : " << pro->GetEntries()  << "\n";
+        results << "    Mean X  : " << pro->GetMean(1)    << "\n";
+        results << "    Mean Y  : " << pro->GetMean(2)    << "\n";
+        results << "    RMS X   : " << pro->GetRMS(1)     << "\n";
+        results << "    RMS Y   : " << pro->GetRMS(2)     << "\n\n";
+    }
+
+    results << "==================================================\n";
+    results << "End of Results\n";
+    results << "==================================================\n";
+    results.close();
+
+    std::cout << "Fit results written to: " << outputFile << std::endl;
 
 
 
