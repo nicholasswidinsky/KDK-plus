@@ -29,6 +29,13 @@ class coincData:
         
     def AddEvent(self,channel,time,Energy):
         
+        # for i, ch in enumerate(channel):
+        #     if ch not in self.chData:
+        #         print(f"Warning: skipping unknown channel '{ch}' - likely malformed line in data file")
+        #         continue
+        #     self.chData[ch].AddEvent(Energy[i], time[i])
+        
+        
         for i, ch in enumerate(channel):
             self.chData[ch].AddEvent(Energy[i],time[i])
             
@@ -261,7 +268,7 @@ def ReadInChannelNames(settings):
     return channels
     
     
-rootfilePath = Path('/home/nick/PhD/KDK+/Daily_LSC_Calibration_testing/2026_04_30/2026_04_30_Daily_LSC_calibration_Cs137_coinc/RAW/coinc_sorted') #filepath to the coinc sorted directory. 
+rootfilePath = Path('/home/nick/PhD/KDK+/Daily_LSC_Calibration_testing/2026_05_14/2026_05_14_Daily_LSC_calibration_Cs137_coinc_2/RAW/coinc_sorted') #filepath to the coinc sorted directory. 
 
 NaIChannels = ['8','10','12','14'] #Protects against the possibility of having a werid channel coincidence layout with incorrect channel numbers. 
 
@@ -285,7 +292,7 @@ for filePath in coincFiles:
 
     #Read in the detector names from the settings file. 
     channels = ReadInChannelNames(settingsFilePath)
-                    
+    print(filePath)
     cData = readInData(filePath)
 
     hist2DData = make2DHists(cData)
