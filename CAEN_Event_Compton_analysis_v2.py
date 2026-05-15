@@ -12,6 +12,7 @@ from iminuit import Minuit
 from iminuit.cost import ExtendedUnbinnedNLL, ExtendedBinnedNLL
 from numba_stats import truncnorm, truncexpon
 from scipy.stats import skewnorm
+import scipy.stats as Stats
 from scipy.signal import find_peaks
 from scipy.ndimage import gaussian_filter1d
 import random
@@ -297,7 +298,7 @@ class Detector:
         
     def EnergyStabilityPlot(self, ax,fig, TimeBinRange,ChBinRange):
         
-        h = ax.hist2d(self.t, self.E, bins = (TimeBinRange,ChBinRange))
+        h = ax.hist2d(self.t, self.E, bins = (TimeBinRange,ChBinRange),cmin = 1)
         fig.colorbar(h[3],ax=ax)
         
         ax.set_title(detectors[f'Channel {self.ch}'][0])
@@ -319,7 +320,32 @@ class Detector:
         ax.set_xticks(range(len(flagDictionary)), list(flagDictionary.keys()),rotation = 70)
         ax.set_ylabel('Number of Events')
         
+    def FlagHistograms(self,ax):
         
+        uniqueFlags = sorted(set(self.flag))
+        
+        flagDictionary = dict(zip(uniqueFlags, [[] for _ in range(len(self.flag))]))
+
+        for i,flag in enumerate(self.flag):
+            flagDictionary[flag].append(self.E[i])
+        
+        for flag in flagDictionary:
+            flagDictionary[flag]
+            
+            Ehist, EhistBins = BinHistograms(flagDictionary[flag],[0,4050],100) #Calls the bin histogram function to bin the data. 
+            ax.hist(EhistBins[:-1],bins =EhistBins,weights=Ehist/(self.t[-1] - self.t[0]),histtype = 'step',label = flag,linewidth = 3)
+            #(ax = ax[0], ChBins =ChBins[i], BinRange = Binrange, norm = False, log = False) 
+        ax.set_title(f'{detectors[f'Channel {self.ch}'][0]} flag histograms')
+        ax.set_yscale('log')
+        ax.set_xlabel('Integral (ADU)')
+        ax.set_ylabel('counts/bin/ns')
+        # Shrink current axis by 20%
+        box = ax.get_position()
+        ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
+
+        # Put a legend to the right of the current axis
+        ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+
     def expSkewGaussFit(self, ax, xLim):
         #########################################################################
         #   Function that will fit the data that has been provided, as well as  #
@@ -396,7 +422,79 @@ class Detector:
         return m, initFit
 
             
-    
+    def expGaussFit(self, ax, xLim):
+        #########################################################################
+        #   Function that will fit the data that has been provided, as well as  #
+        #   plotting the data for the histogram that was fit.                   #
+        #########################################################################
+        #   Variables:                                                          #
+        #       - data: unbinned histogram data.                                #
+        #       - ax: matplotlib axis that I will plot the histogram on.        #
+        #       - xLim: The range over which this data will be plotted.         #
+        #########################################################################
+        nBins = 100
+        binWidth = 5
+        bins, step = np.linspace(xLim[0], xLim[1], nBins+1, retstep=True)
+        counts, mplbins, patches = ax.hist(self.E, bins = bins, density = False, log = False, histtype = 'step', lw = 3, label = 'Data')
+        # plt.show()
+        maxInd = np.where(counts == max(counts[30:])) #Determine the index of the largest bin in the histogram. 
+        c = ExtendedBinnedNLL(counts,bins, exp_gauss_CDF)
+        #c = ExtendedBinnedNLL(truncHist,truncbins, exp_gauss_skew_CDF)
+        #0: n_gauss
+        #1: n_exp
+        #2: tau
+        #3: Sigma
+        #4: Mu_gauss
+        #5: mu_exp
+        self.n_gauss = sum(counts)
+        self.n_exp = 0.8*self.n_gauss
+        self.tau = 100
+        self.Mu_gauss = (xLim[1]+xLim[0])/2 #counts[maxInd[0]]
+        self.Mu_exp = xLim[0]
+        self.sigma = 0.1*self.Mu_gauss
+        
+        initFit = [self.n_gauss,self.n_exp,self.tau,self.sigma,self.Mu_gauss,self.Mu_exp] #NaI raw fit params
+        print(initFit)
+        
+        # initFit = [9e3,100,50,200,1800,200,1]
+        
+        m = Minuit(c ,n_gauss = initFit[0], n_exp = initFit[1],tau = initFit[2], sigma = initFit[3], mu_gauss = initFit[4], mu_exp = initFit[5],xLim1 = xLim[0],xLim2 = xLim[1])
+        m.limits["n_gauss", "n_exp", "tau", "sigma", "mu_gauss", "mu_exp"] = (0, None)
+        m.fixed["xLim1","xLim2"] = True
+        # print(m)
+        #m.simplex() #Another fitting procedure. Less accurate but faster. Seems to make my chi^2 go from 0.8 - 1.3
+        m.migrad()
+        m.hesse()    
+        print(r'$chi$^2 / ndof = ' + f"{m.fval/m.ndof}")
+        print(m)
+        # print(m.values[4])
+        # print(f'chi^2 = {m.fval}') #prints the chi_^2
+        # print(f'ndof = {m.ndof}') #prints the number of degrees of freedom 
+        
+        # self.mean = m.values[4] + m.values[3] * (m.values[6]/(np.sqrt(1+m.values[6]**2)))*np.sqrt(2/np.pi)
+        self.mean = m.values[4]
+        
+        xRange = np.linspace(xLim[0], xLim[1], 1000)
+        expGauss = step * exp_gauss(xRange, m.values[0],m.values[1],m.values[2],m.values[3],m.values[4],m.values[5], xLim[0], xLim[1])[1]
+        exp = step * expFunc(xRange,m.values[1],m.values[5],m.values[2], xLim[0], xLim[1])[1]
+        gaussFit = step * gauss(xRange,m.values[0], m.values[3],m.values[4])
+        
+        # initexpGauss = step * exp_gauss_skew(xRange, initFit[0],initFit[1],initFit[2],initFit[3],initFit[4],initFit[5],initFit[6], xLim[0], xLim[1])[1]
+        # initexp = step * expFunc(xRange,initFit[1],initFit[5],initFit[2], xLim[0], xLim[1])[1]
+        # initgauss = step * gauss_skew(xRange,initFit[0], initFit[3],initFit[4],initFit[6])
+        
+        ax.plot(xRange,expGauss, label = 'fit', linewidth = 4)
+        ax.plot(xRange,exp, linestyle = "dashed", color = 'black', alpha = 0.5)
+        ax.plot(xRange,gaussFit, linestyle = "dashed", color = 'black', alpha = 0.5)
+        ax.axvline(self.mean,color = 'red', label = f'Mean = {round(self.mean,2)} +/- {round(m.errors[4],2)}')
+        ax.plot([],[],' ', label = r"$\chi$^2 = " + f"{round(m.fval,2)}")
+        ax.plot([],[],' ', label = r"dof = " + f"{round(m.ndof,2)}")
+        ax.plot([],[],' ', label = r"$\chi$^2/dof = " + f"{round(m.fval/m.ndof,2)}")
+        ax.legend(loc = 'best')
+        # ax.plot([],[],' ',label = f"Fit ndof = {m.ndof}")
+        
+        
+        return m
         
 class totalCoinc:
     #####################################################################################
@@ -685,9 +783,9 @@ class totalCoinc:
         
         
         
-        fig, ax = plt.subplots(3,len(self.detectors), figsize = (10*len(self.detectors),20))
+        fig, ax = plt.subplots(4,len(self.detectors), figsize = (10*len(self.detectors),25))
         plt.tight_layout()
-        plt.subplots_adjust(left = 0.06,wspace = 0.15,hspace = 0.25,top = 0.98,bottom = 0.04)
+        plt.subplots_adjust(left = 0.06,wspace = 0.15,hspace = 0.35,top = 0.98,bottom = 0.04)
         
         for i,coinc in enumerate(self.detectors):
             Binrange = [0,4050]
@@ -702,12 +800,15 @@ class totalCoinc:
                 coinc.EnergyStabilityPlot(ax[1],fig,TimeBinRange = timebinsRange, ChBinRange = ChBinRange)
                 
                 coinc.FlagStabilityPlot(ax[2])
+                coinc.FlagHistograms(ax[3])
             else:
                 coinc.EnergyHist1DPlot(ax = ax[0,i], ChBins =ChBins[i], BinRange = Binrange, norm = False, log = False) 
                 
                 coinc.EnergyStabilityPlot(ax[1,i],fig,TimeBinRange = timebinsRange, ChBinRange = ChBinRange)
                 
                 coinc.FlagStabilityPlot(ax[2,i])
+                coinc.FlagHistograms(ax[3,i])
+                
             
         if scale:
             plt.savefig(saveFilePath/f'{fileName}_scaled_stability_plots.png',bbox_inches='tight')
@@ -731,15 +832,16 @@ class totalCoinc:
         for i,data in enumerate(self.detectors): #Loops through all the detector objects. Then plot the 1D hist and the fit.
             data.findPeaks()
             data.EnergyHist1DPlot(ax = ax[0,i], ChBins =Bins[i], BinRange = Binrange, norm = False, log = False)#Plots 
-            try:
-                if i == 0:
-                    data.fitwindow = [1000,2200]
-                elif i ==1:
-                    data.fitwindow = [1300,2200]
-                m,init = data.expSkewGaussFit(ax = ax[1,i], xLim = data.fitwindow)
-                f.write(f'{detectors[f'Channel {data.ch}'][0]},{m.values[0]},{m.values[1]},{m.values[2]},{m.values[3]},{m.values[4]},{m.values[5]},{m.values[6]},{m.fval/m.ndof} \n')
-            except:
-                pass
+            # try:
+            if i == 0:
+                data.fitwindow = [700,1400]
+            elif i > 0:
+                data.fitwindow = [500,2000]
+            # m,init = data.expSkewGaussFit(ax = ax[1,i], xLim = data.fitwindow)
+            m = data.expGaussFit(ax=ax[1,i],xLim = data.fitwindow)
+            f.write(f'{detectors[f'Channel {data.ch}'][0]},{m.values[0]},{m.values[1]},{m.values[2]},{m.values[3]},{m.values[4]},{m.values[5]},{m.values[6]},{m.fval/m.ndof} \n')
+        # except:
+            #     pass
             
         
         plt.savefig(saveFilePath/f'{fileName}_fit_results.png')
@@ -780,8 +882,18 @@ def expFunc(x, n_exp, mu_exp, tau, xLim1,xLim2):
 
 def gauss_skew(x,n_gauss,sigma,mu_gauss,skew):
     return n_gauss*skewnorm.pdf(x,a = skew, loc = mu_gauss, scale = sigma)  
+
+
+def exp_gauss(x,n_gauss,n_exp,tau,sigma,mu_gauss,mu_exp, xLim1,xLim2):
+    return n_gauss+n_exp,(n_gauss*Stats.norm.pdf(x,loc = mu_gauss, scale = sigma) + n_exp * truncexpon.pdf(x, xLim1, xLim2, loc = mu_exp, scale = tau))
+
+def exp_gauss_CDF(x,n_gauss,n_exp,tau,sigma,mu_gauss,mu_exp, xLim1,xLim2):
+    return (n_gauss*Stats.norm.cdf(x,loc = mu_gauss, scale = sigma) + n_exp * truncexpon.cdf(x, xLim1, xLim2, loc = mu_exp, scale = tau))
+
+def gauss(x,n_gauss,sigma,mu_gauss):
+    return n_gauss*Stats.norm.pdf(x, loc = mu_gauss, scale = sigma)
   
-def readInFile_stream(filepath, CoincWindow,CoincChannels, chParams):
+def readInFile_stream(filepath, CoincWindow,CoincChannels, chParams, tCut = None, TimeCut = False):
     
     coinc_list = []
     current_coinc = Coincidence()
@@ -798,10 +910,14 @@ def readInFile_stream(filepath, CoincWindow,CoincChannels, chParams):
             E = int(data[3])
             ch = int(data[1])
             flag = data[5]
-
+            
+            if TimeCut:
+                if not tCut[0] <= t <= tCut[1]:
+                    continue
+                
             # NO waveform
             evt = event(t=t, E=E, flag=flag, Ch=ch,
-                        eventNum=i, params=chParams[ch],
+                        eventNum=i, params=chParams[ch], 
                         waveform=None)
             
             counter += 1
@@ -1133,7 +1249,18 @@ def bintodec(bin):
             
     return decimals
     
-
+def ReadInScale(filepath):
+    with open(filepath) as fi:
+        for i in range(1):
+            next(fi)
+        for line in fi:
+            data = line.split("\n")[0].split(',')
+            LSCLScale = float(data[0])
+            LSCRScale = float(data[2])
+            NaIScale = float(data[4])
+        
+            
+    return LSCLScale,LSCRScale,NaIScale
 
 
 
@@ -1154,12 +1281,15 @@ ChannelParameters = GetChannelData(settingsFilePath)
 waveSaveFilePath = mainData[0][0].with_suffix('') / 'figures' / "waveforms"
 Path(f"{waveSaveFilePath}").mkdir(parents=True, exist_ok=True)
 
+
+timecut = False
+tCut = [2.5e12,4e12]
 #Read in the data from the csv file
-coinc = readInFile_stream(filepath=mainData[0][0],CoincWindow=coincWindow, CoincChannels = CoincChannels,chParams = ChannelParameters)
+coinc = readInFile_stream(filepath=mainData[0][0],CoincWindow=coincWindow, CoincChannels = CoincChannels,chParams = ChannelParameters,tCut=tCut,TimeCut=timecut)
 # coinc = readInFile(filepath=mainData[0][0],CoincWindow=coincWindow, savefilePath=waveSaveFilePath, chParams = ChannelParameters)
 
 
-
+LSCLScale,LSCRScale,NaIScale = ReadInScale("/home/nick/PhD/KDK+/Daily_LSC_Calibration_testing/Loaded_BNL_L_LSC_Small_NaI_LY_coinc_2/RAW/SDataR_Loaded_BNL_L_LSC_Small_NaI_LY_coinc_2/figures/SDataR_Loaded_BNL_L_LSC_Small_NaI_LY_coinc_2_scale_factors.txt",) #Scales the LSC based on the file provided. 
 
 
 uniqueCoinc = []
@@ -1194,7 +1324,8 @@ else:
             if len(mainData) > 1: #If the list of all the data series is > 1 then read in the rest of the data as "Additional Coincidences".
                 i = 1
                 while i < len(mainData): #Loop through the filepaths from mainData, ignoring the first one. 
-                    tempEvents,tempCoinc = readInFile(filepath=mainData[i][0],CoincWindow=coincWindow) #Reads in the additional data and sorts it based on coincidences
+                    #(filepath=mainData[0][0],CoincWindow=coincWindow, CoincChannels = CoincChannels,chParams = ChannelParameters,tCut=tCut,TimeCut=timecut)
+                    tempEvents,tempCoinc = readInFile_stream(filepath=mainData[i][0],CoincWindow=0,CoincChannels = [[0,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0]],chParams=ChannelParameters,tCut=tCut,TimeCut=timecut) #Reads in the additional data and sorts it based on coincidences
                     tempTotalCoinc = (sortTotalCoincidences(coincidences=tempCoinc,CoincCHList=CoincChannels,name=mainData[i][1])) #Sorts based on totalCoincidences
                     i +=1 
                     for j in tempTotalCoinc: #Loop through the data that was just parsed and append it to the additionalCoincides array. 
@@ -1210,7 +1341,7 @@ else:
         #A few miscellaneous settings for plotitng. 
         norm = False #Normalizes the histograms to have an area of 1. 
         log = False #Set the y-axis to log scaled. 
-        scale = False #Scales the values for energy form ADC to KeV. 
+        scale = True #Scales the values for energy form ADC to KeV. 
 
 
 
@@ -1234,8 +1365,10 @@ else:
             # for j, coinc2 in enumerate(totalCoincList2):
             #     if coinc.coincChannels == coinc2.coincChannels:
             #         data2.append(coinc2)
-            
-            saveFilePath = mainData[0][0].with_suffix('') / 'figures' / f"Coincidence_Channels_{Channels}"
+            if timecut:
+                saveFilePath = mainData[0][0].with_suffix('') / 'figures' / f"Coincidence_Channels_{Channels}" / f"time_Cut_{tCut[0]}-{tCut[1]}"
+            else:
+                saveFilePath = mainData[0][0].with_suffix('') / 'figures' / f"Coincidence_Channels_{Channels}"
             Path(f"{saveFilePath}").mkdir(parents=True, exist_ok=True)
             plottingStartTime = time.time()
             
