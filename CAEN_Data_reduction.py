@@ -87,16 +87,20 @@ def ReadInData(filepath, filename, savefilepath, coincWindow):
                 
 
 
-file = Path('/home/nick/PhD/Compton_coinc_example/Compton_coinc_example_no_coinc/RAW/SDataR_Compton_coinc_example_no_coinc.CSV')
+file = Path('/home/nick/PhD/KDK+/Daily_LSC_Calibration_testing/2026_06_24/2026_06_24_Daily_LSC_calibration_bck_no_coinc_new_settings_lower_thresh/RAW/SDataR_2026_06_24_Daily_LSC_calibration_bck_no_coinc_new_settings_lower_thresh.CSV')
 # filename = 'SDataR_NaI_annulus_LS_Cs137_NaI_1_2_3_4_triple_coinc.CSV'
+
+coincWindow = 0 #ns
+
 
 filename = str(file).split('.CSV')[0].split('/')[-1]
 filepath = str(file).split('.CSV')[0].split(filename)[0]
 
-savefilepath = f"{filepath}/coinc_sorted"
+savefilepath = f"{filepath}/coinc_sorted_{coincWindow}ns"
 Path(savefilepath).mkdir(parents=True, exist_ok = True)
 
-coincWindow = 0 #ns
+
+
 
 ReadInData(filepath=filepath,filename=filename,savefilepath=savefilepath,coincWindow=coincWindow)
 

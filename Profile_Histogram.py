@@ -268,14 +268,20 @@ def ReadInChannelNames(settings):
     return channels
     
     
-rootfilePath = Path('/home/nick/PhD/KDK+/Daily_LSC_Calibration_testing/2026_05_14/2026_05_14_Daily_LSC_calibration_Cs137_coinc_2/RAW/coinc_sorted') #filepath to the coinc sorted directory. 
+rootfilePath = Path('/home/nick/PhD/KDK+/Daily_LSC_Calibration_testing/2026_05_08/2026_05_08_Daily_LSC_calibration_Cs137_coinc/RAW/coinc_sorted') #filepath to the coinc sorted directory. 
 
-NaIChannels = ['8','10','12','14'] #Protects against the possibility of having a werid channel coincidence layout with incorrect channel numbers. 
+LSCChannels = [4,5]
+NaIChannels = [8,10,12,14] #Protects against the possibility of having a werid channel coincidence layout with incorrect channel numbers. 
 
-pattern = re.compile(r'_coinc_4_5_(8|10|12|14)\.txt$')
+# LSCChannels = [0,1]
+# NaIChannels = [2,3,4,5]
+
+
+# pattern = re.compile(r'_coinc_4_5_(8|10|12|14)\.txt$')
+pattern = re.compile(rf'_coinc_{LSCChannels[0]}_{LSCChannels[1]}_({NaIChannels[0]}|{NaIChannels[1]}|{NaIChannels[2]}|{NaIChannels[3]}).txt$')
 
 coincFiles = sorted([
-    f for f in rootfilePath.glob('*_coinc_4_5_*.txt')
+    f for f in rootfilePath.glob(f'*_coinc_{LSCChannels[0]}_{LSCChannels[1]}_*.txt')
     if pattern.search(f.name)
 ])
 
@@ -297,7 +303,7 @@ for filePath in coincFiles:
 
     hist2DData = make2DHists(cData)
 
-    cutEndPoints = [[0,0],
+    cutEndPoints = [[0,0], #[x coords, y coords]
                     [0,4000],
                     [50,4000],
                     [50,800],
@@ -305,8 +311,19 @@ for filePath in coincFiles:
                     [4000,50],
                     [4000,0],
                     [0,0]]
+    
+    # cutEndPoints = [[0,0], #[x coords, y coords]
+    #                 [0,4000],
+    #                 [50,4000],
+    #                 [50,1200],
+    #                 [2000,50],
+    #                 [4000,50],
+    #                 [4000,0],
+    #                 [0,0]]
 
-    scaleFactor = 0.6 #With low statistics this number needs to be reduced. With high statistics you can keep this around 0.6.
+    scaleFactor = 0.5 #With low statistics this number needs to be reduced. With high statistics you can keep this around 0.6.
+    
+    
     for data in hist2DData:
         data.cutHist(cutEndPoints)
         data.makeProfileHist(scaleFactor)
