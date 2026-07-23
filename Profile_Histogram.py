@@ -42,14 +42,17 @@ class coincData:
             
             
 class Hists2D:
-    def __init__(self,ch,Energy):
+    def __init__(self,ch,Energy,nbins):
         self.ch = ch
         self.E = Energy
+        self.nbins = nbins
         self.data = {f"{ch[0]}":Energy[0],
                      f"{ch[1]}":Energy[1]}
-        self.hist2D = TH2D(f"{channels[f'Channel {self.ch[0]}'][0]} vs {channels[f'Channel {self.ch[1]}'][0]} 2D Histogram", f"{channels[f'Channel {self.ch[0]}'][0]} vs {channels[f'Channel {self.ch[1]}'][0]}", 100, 0, 4000, 100, 0, 4000)
+        self.hist2D = TH2D(f"{channels[f'Channel {self.ch[0]}'][0]} vs {channels[f'Channel {self.ch[1]}'][0]} 2D Histogram", f"{channels[f'Channel {self.ch[0]}'][0]} vs {channels[f'Channel {self.ch[1]}'][0]}", 150, 0, 4000, 150, 0, 4000)
         for i in range(len(Energy[0])):
-            self.hist2D.Fill(Energy[0][i],Energy[1][i])
+            # self.hist2D.Fill(Energy[0][i],Energy[1][i])
+            self.hist2D.Fill(Energy[1][i],Energy[0][i])
+            
         self.profile = None
         self.cut = None  
         self.fit = None  
@@ -67,6 +70,16 @@ class Hists2D:
         self.hist2D.GetXaxis().SetTitle(f"{channels[f'Channel {self.ch[0]}'][0]} Energy (ADU)")
         self.hist2D.GetYaxis().SetTitle(f"{channels[f'Channel {self.ch[1]}'][0]} Energy (ADU)")
         self.hist2D.GetZaxis().SetTitle("Counts")
+        
+        # self.hist2D.SetContour(100)
+
+        # Possible colour maps:
+        #   KGreyScale -> Greyscale colour palette
+        #   KDeepSEa -> Black to blue 
+        #   KDarkBodyRadiator -> Black to Yellow, including Reds. 
+        #   KAvocado -> Black to Green, similar to DeepSea but A bit more contrast. 
+        #   KStarryNight -> Looks like a muted version of the original colour palette. 
+        ROOT.gStyle.SetPalette(ROOT.kStarryNight)
         
         self.hist2D.SetStats(0)
         self.hist2D.Draw("COLZ")
@@ -101,7 +114,7 @@ class Hists2D:
             self.yp_value  = Stats.chi2.sf(self.ychi2, self.yndof)  # survival function = 1 - CDF
             
             self.XFit = f"{self.fitX.GetParameter(0):.2f} + {self.fitX.GetParameter(1):.4f}x"
-            self.YFit = f"{self.fitY.GetParameter(0):.2f} + {self.fitY.GetParameter(1):.4f}Y"
+            self.YFit = f"{self.fitY.GetParameter(0):.2f} + {self.fitY.GetParameter(1):.4f}y"
             
             # Build legend — positioned to the left of the colour bar
             # (x1, y1, x2, y2) in NDC coordinates (0-1)
@@ -128,6 +141,11 @@ class Hists2D:
         self.hist2D.GetXaxis().SetTitle(f"{channels[f'Channel {self.ch[0]}'][0]} Energy (ADU)")
         self.hist2D.GetYaxis().SetTitle(f"{channels[f'Channel {self.ch[1]}'][0]} Energy (ADU)")
         self.hist2D.GetZaxis().SetTitle("Counts")
+        
+        self.hist2D.SetContour(255)
+
+        ROOT.gStyle.SetPalette(ROOT.kBlueGreenYellow)
+        
         
         # self.hist2D.SetStats(0)
         self.hist2D.Draw("COLZ")
@@ -157,7 +175,7 @@ class Hists2D:
             legend.AddEntry((0), f"#chi^{{2}} / ndof = {self.chi2:.2f} / {self.ndof}", "")
             legend.AddEntry((0), f"p-value = {self.p_value:.4f}", "")
             legend.SetBorderSize(1)
-            legend.SetFillColorAlpha(0, 0.6)  # semi-transparent background
+            legend.SetFillColorAlpha(0, 0)  # semi-transparent background
             self.legend = legend               # store to prevent garbage collection
             self.legend.Draw()
             
@@ -170,9 +188,9 @@ class Hists2D:
     def saveData(self,filepath, outputFileName):
         date = filepath.parent.parent.parent.parent.stem
         
-        outputFile = filepath / f"{outputFileName}_Profile_hist_fit_results.txt"
+        # outputFile = filepath / f"{outputFileName}_Profile_hist_fit_results.txt"
         
-        writeHeader = not outputFile.exists()
+        # writeHeader = not outputFile.exists()
         
         if self.profile is not None:
             outputFile = filepath / f"{outputFileName}_Profile_hist_fit_results.txt"
@@ -188,10 +206,10 @@ class Hists2D:
             writeHeader = not outputFile.exists()
             with open(outputFile, "a") as f:
                 if writeHeader:
-                    f.write('Date,ch1,ch2,fit func, fit range, xchi^2, xnDOF, xP-value, xP0, xP0Err, xP1, xP1Err, ychi^2, ynDOF, yP-value, yP0, yP0Err, yP1, yP1Err \n')
-                f.write(f'{date}, {self.ch[0]}, {self.ch[1]},Pol1, [{self.fitRange[0]}_{self.fitRange[1]}], {self.xchi2},{self.xndof},{self.xp_value},{self.xp0},{self.xp0_err},{self.xp1},{self.xp1_err}, {self.xchi2},{self.xndof},{self.xp_value},{self.xp0},{self.xp0_err},{self.xp1},{self.xp1_err}\n')
+                    f.write('Date,ch1,ch2,fit func, fit X range, fit Y range, xchi^2, xnDOF, xP-value, xP0, xP0Err, xP1, xP1Err, ychi^2, ynDOF, yP-value, yP0, yP0Err, yP1, yP1Err \n')
+                f.write(f'{date}, {self.ch[0]}, {self.ch[1]},Pol1, [{self.fitRangeX[0]}_{self.fitRangeX[1]}],[{self.fitRangeX[0]}_{self.fitRangeX[1]}], {self.xchi2},{self.xndof},{self.xp_value},{self.xp0},{self.xp0_err},{self.xp1},{self.xp1_err}, {self.xchi2},{self.xndof},{self.xp_value},{self.xp0},{self.xp0_err},{self.xp1},{self.xp1_err}\n')
         else:
-            print('Fit Data is Present to write to disk. ')
+            print('Fit Data is not present to write to disk. ')
         
         f.close()
         
@@ -207,7 +225,7 @@ class Hists2D:
         #Define a new 2D histogram that will be the cut histogram.
         self.cutHist2D = TH2D( f"cut_hist_ch_{self.ch[0]}_vs_ch_{self.ch[1]}",
         f"Cut Histogram Ch {self.ch[0]} vs Ch {self.ch[1]}",
-        100, 0, 4000, 100, 0, 4000)
+        self.nbins, 0, 4000, self.nbins, 0, 4000)
         
         #Find which bin has the most counts, and save the maximum counts to maxBin. 
         maxBin = 0
@@ -235,26 +253,53 @@ class Hists2D:
                     # self.profile.Fill(x,y,z) #For this method we are filling the profile directly from the cut histogram
                     self.cutHist2D.Fill(x,y,z)
 
+        # print(f"Before rebin: {self.cutHist2D.GetNbinsX()} x-bins, {self.cutHist2D.GetNbinsY()} y-bins")
         
-        xBins = []
+        
+        xBins,yBins = [],[]
         for bini in range(1, self.cutHist2D.GetNbinsX() + 1):
             for binj in range(1, self.cutHist2D.GetNbinsY() + 1): 
                 z = self.cutHist2D.GetBinContent(bini,binj)
                 if z > 0:
                     xBins.append(self.cutHist2D.GetXaxis().GetBinCenter(bini))
+                    yBins.append(self.cutHist2D.GetYaxis().GetBinCenter(binj))
                     
-        self.fitRange = [min(xBins),max(xBins)]
+        self.fitRangeX = [min(xBins),max(xBins)]
+        self.fitRangeY = [min(yBins),max(yBins)]
+        
+        
+        
+        # yBinrange = [min(yBins),max(yBins)]
+        
+        # nbins = 25
+        
+        # self.cutHist2DSquare = TH2D(f"Cut_Hist_rebinned_ch_{self.ch[0]}_vs_ch_{self.ch[1]}",f"Rebinned Cut Histogram Ch {self.ch[0]} vs Ch {self.ch[1]}",
+        #                             nbins,self.fitRange[0],self.fitRange[1],
+        #                             nbins,yBinrange[0],yBinrange[1])
+        
+        # for bini in range(1, self.cutHist2D.GetNbinsX() + 1):
+        #     for binj in range(1, self.cutHist2D.GetNbinsY() + 1):
+        #         z = self.cutHist2D.GetBinContent(bini, binj)
+        #         if z > 0:
+        #             x = self.cutHist2D.GetXaxis().GetBinCenter(bini)
+        #             y = self.cutHist2D.GetYaxis().GetBinCenter(binj)
+        #             self.cutHist2DSquare.Fill(x, y, z)
+        
+                    
+        # print(f"After rebin:  {self.cutHist2DSquare.GetNbinsX()} x-bins, {self.cutHist2DSquare.GetNbinsY()} y-bins")
+        
+        # self.cutHist2D = self.cutHist2DSquare
         
         #Fill the X and Y profile Histograms 
-        self.profileX = self.cutHist2D.ProfileX('Profile X', 1,-1)
+        self.profileX = self.cutHist2D.ProfileX(f'Profile_X_ch{self.ch[0]}_{self.ch[1]}', 1,-1)
         self.profileX.SetTitle("Profile X")
-        self.profileX.SetLineColor(ROOT.kMagenta)
-        self.profileX.SetLineWidth(2)
-        self.profileX.SetMarkerColor(ROOT.kMagenta)
+        self.profileX.SetLineColor(ROOT.kBlue)
+        self.profileX.SetLineWidth(3)
+        self.profileX.SetMarkerColor(ROOT.kBlue)
         self.profileX.SetMarkerStyle(20)
-        self.profileX.SetMarkerSize(0.7)
+        self.profileX.SetMarkerSize(1)
         
-        self.profileY = self.cutHist2D.ProfileY('Profile Y', 1,-1)
+        self.profileY = self.cutHist2D.ProfileY(f'Profile_Y_ch{self.ch[0]}_{self.ch[1]}', 1,-1)
         #The Y-profile is by design inverted. Thus I need to remake this but swap the X and Y values for each bin.
             
         yBins = self.profileY.GetNbinsX()
@@ -279,55 +324,25 @@ class Hists2D:
             xPyErr.append((self.profileX.GetBinCenter(1) - self.profileX.GetBinCenter(0))/2)
             
         self.profileY = ROOT.TGraphErrors(len(yPxVal),np.array(yPxVal,dtype = 'float64'),np.array(yPyVal,'float64'),np.array(yPxErr,'float64'),np.array(yPyErr,'float64'))
-            
+        print(f"fitRange: {self.fitRangeX}, yPxVal range: {min(yPxVal)}-{max(yPxVal)}, n points: {len(yPxVal)}")
             
         self.profileY.SetTitle("Profile Y")
         self.profileY.SetLineColor(ROOT.kRed)
-        self.profileY.SetLineWidth(2)
+        self.profileY.SetLineWidth(3)
         self.profileY.SetMarkerColor(ROOT.kRed)
         self.profileY.SetMarkerStyle(21)
-        self.profileY.SetMarkerSize(0.7)
-        
-        
-        #Try averaging the data from the two profile histograms to see if it helps fit the line better.
-        # aXval,aYval,aXErr,aYErr = [],[],[],[]
-        
-        # xBins = self.profileX.GetNbinsX()
-    
-        # # print(len(yPxVal))
-        # # print(len(xPxVal))
-        
-        # # print(len(yPyVal))
-        # # print(len(xPyVal))
-        
-        # # print(xBins)
-        # for i in range(len(yPxVal)):
-        #     print(i)
-        #     aXval.append(np.average([yPxVal[i],xPxVal[i]]))
-        #     aYval.append(np.average([yPyVal[i],xPyVal[i]]))
-            
-        #     aXErr.append(np.sqrt((yPxErr[i]**2 + xPxErr[i]**2)) / 2)
-        #     aYErr.append(np.sqrt((yPyErr[i]**2 + xPyErr[i]**2)) / 2)
-            
-        # self.averageProfile = ROOT.TGraphErrors(len(aXval),np.array(aXval,dtype = 'float64'),np.array(aYval,dtype = 'float64'),np.array(aXErr,dtype = 'float64'),np.array(aYErr,dtype = 'float64'))
-        
-        # self.averageProfile.SetTitle("Average Profile")
-        # self.averageProfile.SetLineColor(ROOT.kBlack)
-        # self.averageProfile.SetLineWidth(2)
-        # self.averageProfile.SetMarkerColor(ROOT.kBlack)
-        # self.averageProfile.SetMarkerStyle(21)
-        # self.averageProfile.SetMarkerSize(0.7)
-            
+        self.profileY.SetMarkerSize(1)
         
         
         
-        
-        self.fitX = TF1(f"fit_{channels[f'Channel {self.ch[0]}'][0]}_vs_{channels[f'Channel {self.ch[1]}'][0]}","pol1",self.fitRange[0], self.fitRange[1])
+        self.fitX = TF1(f"fit_{channels[f'Channel {self.ch[0]}'][0]}_vs_{channels[f'Channel {self.ch[1]}'][0]}","pol1",self.fitRangeX[0], self.fitRangeX[1])
         self.profileX.Fit(self.fitX, "RN")
-        self.fitX.SetLineColor(ROOT.kMagenta + 1)
+        self.fitX.SetLineColor(ROOT.kBlue + 1)
         
-        self.fitY = TF1(f"fit_{channels[f'Channel {self.ch[0]}'][0]}_vs_{channels[f'Channel {self.ch[1]}'][0]}","pol1",self.fitRange[0], self.fitRange[1])
-        self.profileY.Fit(self.fitY, "RN")
+        self.fitY = TF1(f"fit_{channels[f'Channel {self.ch[0]}'][0]}_vs_{channels[f'Channel {self.ch[1]}'][0]}","pol1",self.fitRangeY[0], self.fitRangeY[1])
+        self.profileY.Fit(self.fitY, "RNS")
+        fitResultY = self.profileY.Fit(self.fitY,"RNS")
+        print(f"Ch{self.ch[0]} vs Ch{self.ch[1]} Y-fit status: {int(fitResultY.Status())}," f"prob: {fitResultY.Prob():.4f}, points fitted: {fitResultY.Ndf() + 2}")
         self.fitY.SetLineColor(ROOT.kRed + 1)
         
         # self.fitA = TF1(f"fit_{channels[f'Channel {self.ch[0]}'][0]}_vs_{channels[f'Channel {self.ch[1]}'][0]}","pol1",self.fitRange[0], self.fitRange[1])
@@ -356,6 +371,7 @@ class Hists2D:
         self.cutHist2D = TH2D( f"cut_hist_ch_{self.ch[0]}_vs_ch_{self.ch[1]}",
         f"Cut Histogram Ch {self.ch[0]} vs Ch {self.ch[1]}",
         100, 0, 4000, 100, 0, 4000)
+        self.profile.SetLineColor(ROOT.kBlack)
         
         
         maxBin = 0
@@ -435,14 +451,14 @@ def readInData(file):
     return cData
   
   
-def make2DHists(cData):
+def make2DHists(cData,nbins):
     
     hist2DData = []
     for i,ch in enumerate(cData.chList):
         j = i+1
         while j < len(cData.chList):
             hist2DData.append(Hists2D([cData.chList[i], cData.chList[j]],
-                                      [cData.chData[f'{cData.chList[i]}'].E, cData.chData[f'{cData.chList[j]}'].E]))
+                                      [cData.chData[f'{cData.chList[i]}'].E, cData.chData[f'{cData.chList[j]}'].E],nbins))
             j+=1
     
     return hist2DData
@@ -496,13 +512,15 @@ def ReadInChannelNames(settings):
     
     
 # rootfilePath = Path('/home/nick/PhD/KDK+/Daily_LSC_Calibration_testing/2026_05_08/2026_05_08_Daily_LSC_calibration_Cs137_coinc/RAW/coinc_sorted') #filepath to the coinc sorted directory. 
-rootfilePath = Path('/home/nick/PhD/KDK+/Daily_LSC_Calibration_testing/2026_06_24/2026_06_24_Daily_LSC_calibration_Cs137_coinc_new_settings_lower_thresh/RAW/coinc_sorted_500ns')
+rootfilePath = Path('/home/nick/PhD/KDK+/Daily_LSC_Calibration_testing/2026_07_10/2026_07_10_Daily_LSC_calibration_bCs137_coinc_1500_LSC_HV/RAW/coinc_sorted_500ns/')
 
 # LSCChannels = [4,5]
 # NaIChannels = [8,10,12,14] #Protects against the possibility of having a werid channel coincidence layout with incorrect channel numbers. 
 
 LSCChannels = [0,1]
 NaIChannels = [2,3,4,5]
+nbins = 150
+XYProfile = False
 
 
 # pattern = re.compile(r'_coinc_4_5_(8|10|12|14)\.txt$')
@@ -517,7 +535,11 @@ for filePath in coincFiles:
     settingsFilePath = filePath.parent.parent.parent / 'settings.xml'
     saveFilePath = filePath.parent.parent / 'Daily_calibration_fits' / 'figures'
     outputFileName = filePath.stem
-    outputFile = saveFilePath / f"{outputFileName}_Profile_hist_fit_results.txt"
+    
+    if XYProfile:
+        outputFile = saveFilePath / f"{outputFileName}_Profile_hist_fit_results_X_and_Y_Hist.txt"
+    else:    
+        outputFile = saveFilePath / f"{outputFileName}_Profile_hist_fit_results.txt"
     
     if outputFile.exists():
         outputFile.unlink()
@@ -529,7 +551,7 @@ for filePath in coincFiles:
 
     cData = readInData(filePath)
 
-    hist2DData = make2DHists(cData)
+    hist2DData = make2DHists(cData,nbins)
 
     # cutEndPoints = [[0,0], #[x coords, y coords]
     #                 [0,4000],
@@ -543,14 +565,14 @@ for filePath in coincFiles:
     cutEndPoints = [[0,0], #[x coords, y coords]
                     [0,4000],
                     [50,4000],
-                    [50,1200],
-                    [2000,50],
+                    [50,2000],
+                    [1200,50],
                     [4000,50],
                     [4000,0],
                     [0,0]]
 
-    scaleFactor = 0.6 #With low statistics this number needs to be reduced. With high statistics you can keep this around 0.6.
-    XYProfile = True
+    scaleFactor = 0.5 #With low statistics this number needs to be reduced. With high statistics you can keep this around 0.6.
+    
     
     for data in hist2DData:
         data.cutHist(cutEndPoints)
