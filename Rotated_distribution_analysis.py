@@ -15,6 +15,8 @@ import scipy.stats as Stats
 from ROOT import TCanvas, TH2D, TCutG,TProfile, TF1, kRed,TLegend,TH2F
 import ROOT
 
+ROOT.gROOT.SetBatch(True)
+
 ROOT.gStyle.SetLabelSize(0.05, "xyz")  # For axis labels
 ROOT.gStyle.SetTitleSize(0.05, "xyz")  # For axis titles
 ROOT.gStyle.SetTitleSize(0.1, "")     # For overall histogram/graph title
@@ -45,7 +47,7 @@ class coincData:
         for i,ch in enumerate(channel):
             self.chData.update({f'{ch}' : ChData(int(ch),Energy[i],time[i])})
         
-        # print(self.chData['4'].ch)
+
         
     def AddEvent(self,channel,Energy,time):
         
@@ -337,22 +339,28 @@ class Summed2DHist:
 
         self.Hist2DCanvasIndividual.SaveAs(str(saveFileName))
         
-    def PlotSummedIntegral(self,saveFilePath,scaleData,threshold,bins):
+    def PlotSummedIntegral(self,saveFilePath,scaleData,threshold,bins,resultsCanvas,padInd):
         if self.rotatedXData is None or self.rotatedYData is None:
             self.rotatedHistData(scaleData)
         
         if scaleData:
             # threshold = 550
             binRangeY = [0,1000]
+            fitRange = [threshold + binRangeY[1]*0.05,binRangeY[1]*0.75]
         else:
             # threshold = 900
             binRangeY = [0,1750]
+            if 4 in self.Channels:
+                fitRange = [threshold + binRangeY[1]*0.05,binRangeY[1]*0.7]
+            elif 5 in self.Channels:
+                fitRange = [threshold + binRangeY[1]*0.05,binRangeY[1]*0.6]
             
         # bins = 100
         
-        fitRange = [threshold,binRangeY[1]]
+        
+        # fitRange = [threshold,binRangeY[1]]
             
-        self.SummedIntHistCanvas = ROOT.TCanvas(f"Summed_int_ch_{self.Channels[0]}_vs_ch_{self.Channels[1]}",f"Summed Int Ch {self.Channels[0]} vs ch {self.Channels[1]}",4000,4000)
+        self.SummedIntHistCanvas = ROOT.TCanvas(f"Summed_int_ch_{self.Channels[0]}_vs_ch_{self.Channels[1]}",f"Summed Int Ch {self.Channels[0]} vs ch {self.Channels[1]}",8000,8000)
         self.SummedIntHistCanvas.Divide(6,6)
         
         self.summedIntHist = []
@@ -365,6 +373,17 @@ class Summed2DHist:
         self.fitSigma, self.fitSigmaErr = [],[]
         self.fits = []
         self.legends = []
+        # self.fitComponents = []
+        
+        saveFilePath = saveFilePath / 'rotated_Histograms' / f'Channels_{self.Channels[0]}_{self.Channels[1]}'
+        
+        if scaleData:
+            individualFitsFP = saveFilePath / 'Individual_fits_scaled'  
+        else:
+            individualFitsFP = saveFilePath / 'Individual_fits'    
+        
+        saveFilePath.mkdir(parents=True,exist_ok=True)
+        individualFitsFP.mkdir(parents=True,exist_ok=True)
          
                 
         for i in range(36):
@@ -381,7 +400,8 @@ class Summed2DHist:
             for y in ySlice:
                 if y > threshold:
                     dayHist.Fill(y)
-            
+            print(f"Time value to scale by:\t{self.time[i]}")
+        
             dayHist.Scale(1.0 / self.time[i])
                 
             if i == 0:
@@ -401,8 +421,23 @@ class Summed2DHist:
             # # Hist2D.GetXaxis().SetTitle(f"")    
             self.summedIntHist[-1].SetStats(0)
             self.summedIntHist[-1].Draw('HIST')
+            self.summedIntHist[-1].SetLineWidth(3)
+            self.summedIntHist[-1].SetLineColor(ROOT.kAzure+1)
             
             yMax = self.summedIntHist[-1].GetMaximum() * 1.05
+            
+            ################## ---  Gaussian fit --- ##################
+            # truncFormula = (
+            #     f"Gaussian"
+            #     f"gaus(0)"
+            # # )
+            # func = ROOT.TF1(f"gaus_fit_{i}", "gaus(0)", fitRange[0], fitRange[1])
+            
+            # # Initial parameter guesses
+            # ampGuess = self.summedIntHist[-1].Integral("width")
+            # func.SetParameters(ampGuess, self.summedIntHist[-1].GetMean(), self.summedIntHist[-1].GetStdDev())
+            # func.SetParNames("Amplitude", "Mean", "Sigma")
+            # ################## --- Truncated Gaussian fit --- ##################
             
             
             ################## --- Truncated Gaussian fit --- ##################
@@ -418,7 +453,7 @@ class Summed2DHist:
             func.SetParNames("Amplitude", "Mean", "Sigma")
             ################## --- Truncated Gaussian fit --- ##################
             
-            ################## --- Truncated Gaussian + Erf fit --- ##################
+            #         ################# --- Truncated Gaussian + erf fit --- ##################
             # truncFormula = (
             #     f"[0]*TMath::Gaus(x,[1],[2],1)/"
             #     f"(ROOT::Math::normal_cdf({fitRange[1]},[2],[1]) - ROOT::Math::normal_cdf({fitRange[0]},[2],[1]))"
@@ -430,14 +465,56 @@ class Summed2DHist:
             # func = ROOT.TF1(f"truncGausErf_{i}", truncFormula, fitRange[0], fitRange[1])
             # func.SetParameters(ampGuess, self.summedIntHist[-1].GetMean(), self.summedIntHist[-1].GetStdDev(), stepGuess)
             # func.SetParNames("Amplitude", "Mean", "Sigma", "StepHeight")
-            ################## --- Truncated Gaussian + Erf fit --- ##################
+            # ################# --- Truncated Gaussian + erf fit --- ##################
+            
+            # ################# --- Double Truncated Gaussian fit --- ##################
+            # truncFormula = (
+            #     f"[0]*TMath::Gaus(x,[1],[2],1)/"
+            #     f"(ROOT::Math::normal_cdf({fitRange[1]},[2],[1]) - ROOT::Math::normal_cdf({fitRange[0]},[2],[1]))"
+            #     f"+ [3]*TMath::Gaus(x,[4],[5],1)/"
+            #     f"(ROOT::Math::normal_cdf({fitRange[1]},[5],[4]) - ROOT::Math::normal_cdf(0,[5],[4]))"
+            # )
+            
+            # ampGuess = self.summedIntHist[-1].Integral("width")
+            # stepGuess = self.summedIntHist[-1].GetMean() - self.summedIntHist[-1].GetStdDev()
+            # func = ROOT.TF1(f"truncGausErf_{i}", truncFormula, fitRange[0], fitRange[1])
+            # func.SetParameters(ampGuess, self.summedIntHist[-1].GetMean(), self.summedIntHist[-1].GetStdDev(), ampGuess, (binRangeY[1]-binRangeY[0])/2, self.summedIntHist[-1].GetStdDev())
+            # func.SetParNames("Amplitude 1", "Mean 1", "Sigma 1", "Amplitude 2", "Mean 2", "Sigma 2")
+            # ################# --- Double Truncated Gaussian fit --- ##################
             
             
             fitResult = self.summedIntHist[-1].Fit(func, "RSQ")  # R=restrict to range, S=return result, Q=quiet
+            # fitResult = self.summedIntHist[-1].Fit("gaus", "RSQ")  # R=restrict to range, S=return result, Q=quiet
             
             self.fits.append(func)
-            func.SetLineColor(ROOT.kGreen+2)
+            func.SetLineColor(ROOT.kOrange+1)
+            func.SetLineWidth(5)
             func.Draw("SAME")
+            
+            # ################# Create individual components
+            # comp1Formula = (
+            #     f"[0]*TMath::Gaus(x,[1],[2],1)/"
+            #     f"(ROOT::Math::normal_cdf({fitRange[1]},[2],[1]) - ROOT::Math::normal_cdf({fitRange[0]},[2],[1]))"
+            # )
+            # comp2Formula = (
+            #     f"[0]*TMath::Gaus(x,[1],[2],1)/"
+            #     f"(ROOT::Math::normal_cdf({fitRange[1]},[2],[1]) - ROOT::Math::normal_cdf(0,[2],[1]))"
+            # )
+            
+            # gaus1 = ROOT.TF1(f"Component_1_iteration_{i}", comp1Formula, fitRange[0], fitRange[1])
+            # gaus1.SetParameters(func.GetParameter(0),func.GetParameter(1),func.GetParameter(2))
+            # gaus1.SetLineColor(ROOT.kBlack)
+            # gaus1.SetLineStyle(9)
+            # gaus1.Draw("SAME")
+            
+            # gaus2 = ROOT.TF1(f"Component_2_iteration_{i}", comp2Formula, fitRange[0], fitRange[1])
+            # gaus2.SetParameters(func.GetParameter(3),func.GetParameter(4),func.GetParameter(5))
+            # gaus2.SetLineColor(ROOT.kOrange+10)
+            # gaus2.SetLineStyle(9)
+            # gaus2.Draw("SAME")
+                        
+                        
+            # self.fitComponents.append((gaus1,gaus2))
             
             self.fitMean.append(func.GetParameter(1))
             self.fitMeanErr.append(func.GetParError(1))
@@ -449,7 +526,7 @@ class Summed2DHist:
             p_value  = Stats.chi2.sf(chi2, ndof)  
             
             
-            legend = ROOT.TLegend(0.17,0.65,0.60,0.88)
+            legend = ROOT.TLegend(0.18,0.65,0.50,0.88)
             legend.SetHeader("Fit Results", "C")
             legend.AddEntry(self.fits[-1],f"Mean: = {round(self.fitMean[-1],2)} #pm {round(self.fitMeanErr[-1],2)}", "l")
             legend.AddEntry((0), f"Sigma = {round(self.fitSigma[-1],)} #pm {round(self.fitSigmaErr[-1],2)}") 
@@ -494,34 +571,83 @@ class Summed2DHist:
             
             self.vLine.append(ROOT.TLine(self.fitMean[-1],0,self.fitMean[-1],yMax))
             self.vLine[-1].SetLineColor(ROOT.kBlack)
-            self.vLine[-1].SetLineWidth(2)
+            self.vLine[-1].SetLineWidth(3)
             self.vLine[-1].SetLineStyle(2)
             self.vLine[-1].Draw("SAME")
             
             self.stdLLine.append(ROOT.TLine(self.fitMean[-1]-self.fitSigma[-1],0,self.fitMean[-1]-self.fitSigma[-1],yMax))
             self.stdLLine[-1].SetLineColor(ROOT.kRed)
-            self.stdLLine[-1].SetLineWidth(2)
+            self.stdLLine[-1].SetLineWidth(3)
             self.stdLLine[-1].SetLineStyle(2)
             self.stdLLine[-1].Draw("SAME")
             
             
             self.stdHLine.append(ROOT.TLine(self.fitMean[-1]+self.fitSigma[-1],0,self.fitMean[-1]+self.fitSigma[-1],yMax))
             self.stdHLine[-1].SetLineColor(ROOT.kRed)
-            self.stdHLine[-1].SetLineWidth(2)
+            self.stdHLine[-1].SetLineWidth(3)
             self.stdHLine[-1].SetLineStyle(2)
             self.stdHLine[-1].Draw("SAME")
             
             
             self.SummedIntHistCanvas.Update()
             
-        saveFilePath = saveFilePath / 'rotated_Histograms' / f'Channels_{self.Channels[0]}_{self.Channels[1]}'
-        
-        saveFilePath.mkdir(parents=True,exist_ok=True)
-        if scaleData:
-            saveFileName = saveFilePath / f'Channels_{self.Channels[0]}_{self.Channels[1]}_scaled_summed_int_dist.pdf'
-        else:
-            saveFileName = saveFilePath / f'Channels_{self.Channels[0]}_{self.Channels[1]}_summed_int_dist.pdf'
-        self.SummedIntHistCanvas.SaveAs(str(saveFileName))
+            #################################################
+            #   Save individual fits for all the histograms #
+            #################################################
+            self.IndFitintHistCanvas = ROOT.TCanvas(f"individual_fit_ch_{self.Channels[0]}_vs_ch_{self.Channels[1]}_iteration_{i}",f"Individual fit Ch {self.Channels[0]} vs ch {self.Channels[1]}_iteration_{i}",1600,1600)
+            
+            pad = self.IndFitintHistCanvas.cd()
+            pad.SetLeftMargin(0.15)
+            pad.SetBottomMargin(0.13)
+            
+            self.summedIntHist[-1].SetStats(0)
+            self.summedIntHist[-1].Draw('HIST')
+            if scaleData:
+                self.summedIntHist[-1].GetXaxis().SetTitle("Integral (Kev)")
+            else:
+                self.summedIntHist[-1].GetXaxis().SetTitle("Integral (ADC)")
+                
+            self.summedIntHist[-1].GetYaxis().SetTitle("Counts/bin/s")
+            
+            self.summedIntHist[-1].GetXaxis().SetNdivisions(505)   # fewer major ticks (5 primary, 0 secondary, 5 tertiary encoded as "505")
+            self.summedIntHist[-1].GetXaxis().SetLabelSize(0.035)   # smaller than the global 0.05, just for this plot
+            self.summedIntHist[-1].GetXaxis().SetLabelOffset(0.01)  
+                        
+            func.Draw("SAME")
+            
+
+            # gaus1.Draw("SAME")
+            
+            # gaus2.Draw("SAME")
+                        
+
+            
+            
+            # legend = ROOT.TLegend(0.17,0.65,0.60,0.88)
+            # legend.SetHeader("Fit Results", "C")
+            # legend.AddEntry(self.fits[-1],f"Mean: = {round(self.fitMean[-1],2)} #pm {round(self.fitMeanErr[-1],2)}", "l")
+            # legend.AddEntry((0), f"Sigma = {round(self.fitSigma[-1],)} #pm {round(self.fitSigmaErr[-1],2)}") 
+            # legend.AddEntry((0), f"#chi^{{2}} / ndof = {chi2:.2f} / {ndof} = {round(chi2/ndof,2)}", "")
+            # legend.AddEntry((0), f"p-value = {p_value:.4f}", "")
+            
+            # legend.SetBorderSize(1)
+            # legend.SetFillColorAlpha(0, 0)  # semi-transparent background
+            # self.legends.append(legend)               # store to prevent garbage collection
+            
+
+            self.vLine[-1].Draw("SAME")
+            self.stdLLine[-1].Draw("SAME")
+            self.stdHLine[-1].Draw("SAME")
+            self.legends[-1].Draw("SAME")
+            func.Draw("SAME")
+            
+            if scaleData:
+                indFileName = individualFitsFP / f'Channels_{self.Channels[0]}_{self.Channels[1]}_dist_fit_scaled_iteration_{i}_fit.png'
+            else:
+                indFileName = individualFitsFP / f'Channels_{self.Channels[0]}_{self.Channels[1]}_dist_fit_iteration_{i}_fit.png'
+            
+            self.IndFitintHistCanvas.SaveAs(str(indFileName))
+
         
         if scaleData:
             saveFileName = saveFilePath / f'Channels_{self.Channels[0]}_{self.Channels[1]}_scaled_summed_int_dist.png'
@@ -619,6 +745,41 @@ class Summed2DHist:
         self.stdCanvas.Update()
         
         self.stdCanvas.SaveAs(str(saveFileName))
+        
+        
+        
+        pad = resultsCanvas.cd(3*padInd + 1)
+        pad.SetLeftMargin(0.25)
+        
+        if scaleData:
+            self.meanDist.SetTitle(f"Ch {self.Channels[1]} Mean of Histograms scaled to keV")
+
+        else:
+            self.meanDist.SetTitle(f"Ch {self.Channels[1]} Mean of Histograms in ADC")
+
+        self.stdDist.Draw("AP")
+        resultsCanvas.Update()
+        
+        pad = resultsCanvas.cd(3*padInd + 2)
+        pad.SetLeftMargin(0.25)
+        
+        if scaleData:
+            self.meanDist.SetTitle(f"Ch {self.Channels[1]} Mean of Histograms scaled to keV")
+
+        else:
+            self.meanDist.SetTitle(f"Ch {self.Channels[1]} Mean of Histograms in ADC")
+
+        self.meanDist.Draw("AP")
+        resultsCanvas.Update()
+            
+        pad = resultsCanvas.cd(3*padInd + 3)
+        pad.SetLeftMargin(0.25)
+        
+        self.resDist.SetTitle(f"Ch {self.Channels[1]} Resolution of Histograms")
+        self.resDist.Draw("AP")
+        resultsCanvas.Update()
+        
+        
 
 class ScaleFactors:
     def __init__(self,ch):
@@ -630,13 +791,18 @@ class ScaleFactors:
             
             
 def readInData(file, scaleFactor = None):
+
     with open(file) as f: 
+
+
         for i in range(3): #skips the first 3 lines of the file. 
             next(f)
             
         date = str(file.parent.parent.parent.parent).split('/')[-1]
         date = date.replace('_','-')
+        timeRange = []
         for i, line in enumerate(f):
+
             if i == 0: #Look at the third line to get the total number of channels in this coincidence. 
                 numChannels = int(line.split("\n")[0].split(": ")[1])
             else:
@@ -646,6 +812,8 @@ def readInData(file, scaleFactor = None):
                 for j in range(numChannels):
                     ch.append(int(data[6*j+1]))
                     t.append(float(data[6*j+2])/1e12) #Grab the time data for scaling purposes. Convert to s from ps.
+                    if len(timeRange) == 0:
+                        timeRange.append(t[0])
                     if scaleFactor is not None:
                         for s in scaleFactor:
                             if s.ch == int(data[6*j+1]):
@@ -662,7 +830,7 @@ def readInData(file, scaleFactor = None):
                     cData = coincData(ch,E,t)
                 else:
                     cData.AddEvent(ch,E,t)
-                    
+        print(f"Run Time: {t[-1] - timeRange[0]}")
     return cData
 
 
@@ -680,8 +848,6 @@ def ReadInSlopes(file):
                 channels = [int(data[1]), int(data[11])]
                 slope = float(data[9])
                 slopeErr = float(data[10])
-                
-                print(f'Reading in slope data for:\n Slope Date {date} \tchannels {channels}')
                 
                 chstring = f"{channels[0]},{channels[1]}"
                 if chstring in slopeDict:
@@ -770,7 +936,7 @@ def ReadInChannelNames(settings):
 rootfilePath = Path('/home/nick/PhD/KDK+/Daily_LSC_Calibration_testing/') #filepath to the coinc sorted directory. 
 
 #A list of data sets that are excluded from the data. This can be due to bad data or incorrect settings.
-excludedDataFiles = [Path('/home/nick/PhD/KDK+/Daily_LSC_Calibration_testing/2026_04_28/2026_04_28_Daily_LSC_calibration_Cs137_coinc'), #Data set was taken before the settings were finalized
+excludedDataFiles = [Path('/home/nick/PhD/KDK+/Daily_LSC_Calibration_testing/2026_04_28/2026_04_28_Daily_LSC_calibration_Cs137_coinc'),Path('/home/nick/PhD/KDK+/Daily_LSC_Calibration_testing/2026_04_28/2026_04_28_Daily_LSC_calibration_Cs137_coinc_2'),Path('/home/nick/PhD/KDK+/Daily_LSC_Calibration_testing/2026_06_11/2026_06_11_Daily_LSC_calibration_Cs137_coinc_2') #Data set was taken before the settings were finalized
                      ]
 
 averageScaleFactorFP = Path('/home/nick/PhD/KDK+/Daily_LSC_Calibration_testing/Results/Annulus_stability_data_average.txt')
@@ -785,8 +951,7 @@ NaIChannels = [8,10,12,14] #Protects against the possibility of having a werid c
 # LSCChannels = [0,1]
 # NaIChannels = [2,3,4,5]
 
-scaleData = False
-fitData = False
+scaleData = True
 if scaleData:
     scaleFac = readInScaleFactors(averageScaleFactorFP, channels = LSCChannels + NaIChannels)
 
@@ -800,7 +965,7 @@ histogramData = []
 for i in LSCChannels:
     for j in NaIChannels:
         histogramData.append(Summed2DHist([i,j]))
-        print(histogramData[-1].Channels)
+        # print(histogramData[-1].Channels)
 
 
 readInStartTime = time.time()
@@ -824,7 +989,6 @@ for i,filePath in enumerate(coincFiles):
 
         if i == 0:
             Detectors = ReadInChannelNames(settingsFilePath)
-        
         if scaleData:
             cData = readInData(filePath,scaleFac)
         else:
@@ -851,16 +1015,74 @@ slopeDict = ReadInSlopes(slopeFilePath)
 slopeReadInTime = time.time()
 print(f"Time to read in slope data: {slopeReadInTime - totalReadTime} s")
 
-nbins = 100
+nbins = 150
 if scaleData:
     threshold = 550
 else:
-    threshold = 900
+    Ch4threshold = {'8': 900,
+                 '10': 850,
+                 '12': 850,
+                 '14': 825
+                       
+    }
+    
+    Ch5threshold = {'8': 775,
+                    '10': 750,
+                    '12':775,
+                    '14':750
+                    }
+
+ch4Canvas = ROOT.TCanvas(f"Ch_4_final_results","LSC Left Final Results", 3200,3200)
+ch4Canvas.Divide(3,4)
+ch5Canvas = ROOT.TCanvas(f"Ch_5_final_results","LSC Right Final Results", 3200,3200)
+ch5Canvas.Divide(3,4)
+
 
 for hist in histogramData:
+    if 4 in hist.Channels:
+        resultCanvas = ch4Canvas
+        if not scaleData:
+            threshDict = Ch4threshold
+    elif 5 in hist.Channels:
+        resultCanvas = ch5Canvas
+        if not scaleData:
+            threshDict = Ch5threshold
+        
+        
+    if 8 in hist.Channels:
+        padInd = 0
+        if not scaleData:
+            threshold = threshDict['8']
+    elif 10 in hist.Channels:
+        padInd = 1
+        if not scaleData:
+            threshold = threshDict['10']
+    elif 12 in hist.Channels:
+        padInd = 2
+        if not scaleData:
+            threshold = threshDict['12']
+    elif 14 in hist.Channels:
+        padInd = 3
+        if not scaleData:
+            threshold = threshDict['14']
+    
     print(f'Plotting 2D Histogram from channels: {hist.Channels}')
     print(hist.dates)
     hist.plot2DHist(savefilepath,scaleData,nbins)
     hist.plotRotatedHistograms(savefilepath,scaleData,slopeDict,threshold,nbins)
-    hist.PlotSummedIntegral(savefilepath,scaleData,threshold,nbins)
-    break
+    hist.PlotSummedIntegral(savefilepath,scaleData,threshold,nbins,resultCanvas,padInd)
+    # break
+
+
+finalResFP = savefilepath / 'rotated_Histograms' / 'Total_Ch_results'
+finalResFP.mkdir(parents=True,exist_ok = True)
+
+if scaleData:
+    ch4FileName = finalResFP / 'LSC_left_final_results_scaled.png'
+    ch5FileName = finalResFP / 'LSC_right_final_results_scaled.png'
+else:
+    ch4FileName = finalResFP / 'LSC_left_final_results.png'
+    ch5FileName = finalResFP / 'LSC_right_final_results.png'
+
+ch4Canvas.SaveAs(str(ch4FileName))
+ch5Canvas.SaveAs(str(ch5FileName))
