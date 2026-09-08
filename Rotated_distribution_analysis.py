@@ -15,7 +15,7 @@ import scipy.stats as Stats
 from ROOT import TCanvas, TH2D, TCutG,TProfile, TF1, kRed,TLegend,TH2F
 import ROOT
 
-ROOT.gROOT.SetBatch(True)
+# ROOT.gROOT.SetBatch(True)
 
 ROOT.gStyle.SetLabelSize(0.05, "xyz")  # For axis labels
 ROOT.gStyle.SetTitleSize(0.05, "xyz")  # For axis titles
@@ -63,6 +63,8 @@ class Summed2DHist:
         self.yInts = np.array([]) #Integrals along the y axis
         self.time = [] #Time for all the events. We are able to 
         
+        self.sumLSCEnergy = None
+        
         self.SeparationPoints = []
         self.sumChannels = np.array([])
         
@@ -78,17 +80,25 @@ class Summed2DHist:
         
     #     self.slope = 1/slope
         
-    def addHistData(self,xData,yData,time, date):
+    def addHistData(self,xData,yData,time, date,sumLSCEnergy):
         runTime = time[-1] - time[0]
                 
 
         xData = np.asarray(xData,dtype='float64')
         yData = np.asarray(yData,dtype='float64')
         
+        
         self.xInts = np.concatenate((self.xInts,xData)) #Adds the latest data to the x and y arrays
         self.yInts = np.concatenate((self.yInts,yData))
+
         self.time.append(runTime)
         
+        if sumLSCEnergy is not None:
+            sumLSCEnergy = np.asarray(sumLSCEnergy, dtype = 'float64')
+            if self.sumLSCEnergy is None:
+                self.sumLSCEnergy = sumLSCEnergy
+            else:
+                self.sumLSCEnergy = np.concatenate((self.sumLSCEnergy,sumLSCEnergy))
 
         
         if date in self.dates:
@@ -141,24 +151,12 @@ class Summed2DHist:
 
         self.hist2D = []
 
+        if self.sumLSCEnergy is not None:
+            self.sumLSCCanvas = ROOT.TCanvas(f"2D_Hist_comb_LSC_vs_ch_{self.Channels[1]}",f"2D Hist combined LSC vs ch {self.Channels[1]}",2000,4000)
+            self.sumLSCCanvas.Divide(6,6)
+            self.CombinedLSCHist2D = []
         
         ROOT.gStyle.SetPalette(ROOT.kBlueGreenYellow)
-        
-        # for i in range(36): #Loop over all 36 subplots.
-        #     self.Hist2DCanvas.cd(i+1) #Switch the current pad to the next canvas. 
-            
-        #     self.hist2D.append(TH2D(f"Histogram_2D_ch_{self.Channels[0]}_vs_ch_{self.Channels[1]}_iteration_{i}",f"Histogram 2D Ch {self.Channels[0]} vs ch {self.Channels[1]} iteration {i}",bins,binRangeX[0],binRangeX[1],bins,binRangeY[0],binRangeY[1]))
-            
-
-        #     for x,y in zip(self.xInts[0:self.SeparationPoints[i]],self.yInts[0:self.SeparationPoints[i]]):
-        #         self.hist2D[-1].Fill(x,y)
-                
-
-                
-        #     # Hist2D.GetXaxis().SetTitle(f"")    
-        #     self.hist2D[-1].SetStats(0)
-        #     self.hist2D[-1].Draw('COLZ')
-        #     self.Hist2DCanvas.Update()
 
         for i in range(36):
             self.Hist2DCanvas.cd(i+1)
@@ -194,40 +192,55 @@ class Summed2DHist:
             self.hist2D[-1].Draw('COLZ')
             self.Hist2DCanvas.Update()            
             
+            if self.sumLSCEnergy is not None:
+                
+                self.sumLSCCanvas.cd(i+1)
+                
+                LSCDayHist = TH2D(f"Day_Hist_Combined_LSC_ch_{self.Channels[0]}_vs_ch_{self.Channels[1]}_iteration_{i}",
+                                f"Day Hist Combined LSC ch {self.Channels[0]} vs ch {self.Channels[1]} iteration {i}",
+                                bins,binRangeX[0],binRangeY[0],bins,binRangeY[0],binRangeY[1])
+                LSCDayHist.Sumw2()
+                
+                if i ==0:
+                    xSlice = self.sumLSCEnergy[0:self.SeparationPoints[i]]
+                    ySlice = self.yInts[0:self.SeparationPoints[i]]
+                else:
+                    xSlice = self.sumLSCEnergy[self.SeparationPoints[i-1]:self.SeparationPoints[i]]
+                    ySlice = self.yInts[self.SeparationPoints[i-1]:self.SeparationPoints[i]]
+                    
+                for x,y in zip(xSlice,ySlice):
+                    LSCDayHist.Fill(x,y)
+                    
+                LSCDayHist.Scale(1.0/self.time[i])
+                
+                if i ==0:
+                    self.CombinedLSCHist2D.append(LSCDayHist)
+                else:
+                    LSCcumHist = self.CombinedLSCHist2D[-1].Clone(f"Combined_LSC_Histogram_ch_{self.Channels[0]}_vs_ch_{self.Channels[1]}_iteration_{i}")
+                    LSCcumHist.SetTitle(f"Combined LSC Histogram ch {self.Channels[0]} vs ch {self.Channels[1]} iteration {i}")
+                    LSCcumHist.Add(LSCDayHist)
+                    self.CombinedLSCHist2D.append(LSCcumHist)
+                    
+                self.CombinedLSCHist2D[-1].SetStats(0)
+                self.CombinedLSCHist2D[-1].Draw("COLZ")
+                self.sumLSCCanvas.Update()
 
         saveFilePath = saveFilePath / 'rotated_Histograms' / f'Channels_{self.Channels[0]}_{self.Channels[1]}'
         saveFilePath.mkdir(parents=True,exist_ok=True)
         if scaleData:
             saveFileName = saveFilePath / f'Channels_{self.Channels[0]}_{self.Channels[1]}_scaled_cummulative_2D_Hist.png'
+            if self.sumLSCEnergy is not None:
+                LSCsaveFileName = saveFilePath / f'Channels_{self.Channels[0]}_{self.Channels[1]}_scaled_cummulative_2D_Hist_combined_LSC.png'
+            
         else:
             saveFileName = saveFilePath / f'Channels_{self.Channels[0]}_{self.Channels[1]}_cummulative_2D_Hist.png'
+            if self.sumLSCEnergy is not None:
+                LSCsaveFileName = saveFilePath / f'Channels_{self.Channels[0]}_{self.Channels[1]}_cummulative_2D_Hist_combined_LSC.png'
 
         self.Hist2DCanvas.SaveAs(str(saveFileName))
+        if self.sumLSCEnergy is not None:
+            self.sumLSCCanvas.SaveAs(str(LSCsaveFileName))
         
-        # self.Hist2DCanvasIndividual = ROOT.TCanvas(f"Individual_2D_Hist_Canvas_ch_{self.Channels[0]}_vs_ch_{self.Channels[1]}",f"Invidual 2D Hist Canvas Ch {self.Channels[0]} vs ch {self.Channels[1]}",2000,4000)
-        
-        # self.Hist2DCanvasIndividual.Divide(6,6)
-        
-        # for i in range(36):
-        #     if i == 0:
-        #         for x,y in zip(self.xInts[0:self.SeparationPoints[i]],self.yInts[0:self.SeparationPoints[i]]):
-        #             self.hist2DIndividual[-1].Fill(x,y)
-        #     else:
-        #         for x,y in zip(self.xInts[self.SeparationPoints[i-1]:self.SeparationPoints[i]],self.yInts[self.SeparationPoints[i-1]:self.SeparationPoints[i]]):
-        #             self.hist2DIndividual[-1].Fill(x,y)
-        
-        # self.hist2DIndividual[-1].SetStats(0)
-        # self.hist2DIndividual[-1].Draw('COLZ')
-        # self.Hist2DCanvasIndividual.Update()
-        
-
-        # if scaleData:
-        #     saveFileName = saveFilePath / f'Channels_{self.Channels[0]}_{self.Channels[1]}_scaled_non_cummulative_2D_Hist.png'
-        # else:
-        #     saveFileName = saveFilePath / f'Channels_{self.Channels[0]}_{self.Channels[1]}_noncummulative_2D_Hist.png'
-
-        # self.Hist2DCanvasIndividual.SaveAs(str(saveFileName))
-    # self.sumChannels = np.concatenate((self.sumChannels,(np.sin(np.arctan(slope))*xData + np.cos(np.arctan(slope))*yData)))
     
     def plotRotatedHistograms(self,saveFilePath,scaleData,slopeDict,threshold,bins):
         # bins = 100
@@ -952,6 +965,7 @@ NaIChannels = [8,10,12,14] #Protects against the possibility of having a werid c
 # NaIChannels = [2,3,4,5]
 
 scaleData = True
+sumLSCData = True
 if scaleData:
     scaleFac = readInScaleFactors(averageScaleFactorFP, channels = LSCChannels + NaIChannels)
 
@@ -1000,10 +1014,18 @@ for i,filePath in enumerate(coincFiles):
 
 
         for j,hist in enumerate(histogramData):
+            if sumLSCData:
+                
+                LSCSumEnergy = (cData.chData[str(chPairs[0][0])].E + cData.chData[str(chPairs[1][0])].E)
+                
+            else:
+                
+                LSCSumEnergy = None
+                    
             if hist.Channels == chPairs[0]:
-                hist.addHistData(cData.chData[str(chPairs[0][0])].E,cData.chData[str(chPairs[0][1])].E,cData.chData[str(chPairs[0][0])].t,date)
+                hist.addHistData(cData.chData[str(chPairs[0][0])].E,cData.chData[str(chPairs[0][1])].E,cData.chData[str(chPairs[0][0])].t,date,LSCSumEnergy)
             elif hist.Channels == chPairs[1]:
-                hist.addHistData(cData.chData[str(chPairs[1][0])].E,cData.chData[str(chPairs[1][1])].E,cData.chData[str(chPairs[0][0])].t,date)
+                hist.addHistData(cData.chData[str(chPairs[1][0])].E,cData.chData[str(chPairs[1][1])].E,cData.chData[str(chPairs[0][0])].t,date,LSCSumEnergy)
 
 
 

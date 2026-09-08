@@ -65,7 +65,6 @@ class event:
         
         # intRegion = [50,350]
         # triggerTime = 125
-        
         timeValues = np.linspace(0,2*len(self.waveform),len(self.waveform)) #It looks like the sampling rate is 2 ns/sample. Thus to find the total event time we multiply th length of the array by 2 ns/sample. 
         baseline = np.average(self.waveform[0:30])
         
@@ -785,7 +784,7 @@ class totalCoinc:
         
         fig, ax = plt.subplots(4,len(self.detectors), figsize = (10*len(self.detectors),25))
         plt.tight_layout()
-        plt.subplots_adjust(left = 0.06,wspace = 0.15,hspace = 0.35,top = 0.98,bottom = 0.04)
+        plt.subplots_adjust(left = 0.06,wspace = 0.2,hspace = 0.35,top = 0.98,bottom = 0.04)
         
         for i,coinc in enumerate(self.detectors):
             Binrange = [0,4050]
@@ -822,23 +821,35 @@ class totalCoinc:
         Binrange = [0,4000]
             
         # ChBinRange = np.linspace(Binrange[0],Binrange[1],ChBins[i])
-        fig,ax = plt.subplots(2,len(self.detectors), figsize = (10*len(detectors),20))
+        fig,ax = plt.subplots(2,len(self.detectors), figsize = (15*len(self.detectors),20))
         
         plt.tight_layout()
-        plt.subplots_adjust(hspace = 0.3, wspace = 0.15, left = 0.05, right = 0.95, top = 0.95, bottom = 0.07)
+        plt.subplots_adjust(hspace = 0.3, wspace = 0.15, left = 0.1, right = 0.95, top = 0.95, bottom = 0.07)
         
         f = open(saveFilePath/f'{fileName}_fit_results.txt',"w+")
         f.write("Detector, n_gauss, n_exp, tau, sigma, mu_gauss, mu_exp, skew,$chi$^2 / ndof \n")
         for i,data in enumerate(self.detectors): #Loops through all the detector objects. Then plot the 1D hist and the fit.
             data.findPeaks()
-            data.EnergyHist1DPlot(ax = ax[0,i], ChBins =Bins[i], BinRange = Binrange, norm = False, log = False)#Plots 
+            if len(self.detectors) == 1:
+                data.EnergyHist1DPlot(ax = ax[0], ChBins =Bins[i], BinRange = Binrange, norm = False, log = False)#Plots 
+            else:
+                data.EnergyHist1DPlot(ax = ax[0,i], ChBins =Bins[i], BinRange = Binrange, norm = False, log = False)#Plots 
             # try:
-            if i == 0:
-                data.fitwindow = [700,1400]
-            elif i > 0:
-                data.fitwindow = [500,2000]
+            # if i == 0:
+            #     data.fitwindow = [700,1400]
+            # elif i > 0:
+            #     data.fitwindow = [500,2000]
+            
+            if 'NaI' in detectors[f'Channel {data.ch}'][0]:
+                data.fitwindow = [600,1100]
+            else:
+                data.fitwindow = [800,1600]
             # m,init = data.expSkewGaussFit(ax = ax[1,i], xLim = data.fitwindow)
-            m = data.expGaussFit(ax=ax[1,i],xLim = data.fitwindow)
+            if len(self.detectors) == 1:
+                m = data.expGaussFit(ax=ax[1],xLim = data.fitwindow)
+                
+            else:
+                m = data.expGaussFit(ax=ax[1,i],xLim = data.fitwindow)
             f.write(f'{detectors[f'Channel {data.ch}'][0]},{m.values[0]},{m.values[1]},{m.values[2]},{m.values[3]},{m.values[4]},{m.values[5]},{m.values[6]},{m.fval/m.ndof} \n')
         # except:
             #     pass
@@ -1038,7 +1049,7 @@ def readInInit(initfilepath):
                 dataFilePath.append(lines[ind].split("\n")[0].split('\t')[fileInd]) #Read in the next additional data file path
                 dataName.append(lines[ind].split("\n")[0].split('\t')[fileInd-1]) #Read in the next additional data name. 
                 ind += 1
-            except: #Break out of the wile loop when an error is encountered. 
+            except: #Break out of the while loop when an error is encountered. 
                 break
         
 
@@ -1283,10 +1294,14 @@ Path(f"{waveSaveFilePath}").mkdir(parents=True, exist_ok=True)
 
 
 timecut = False
+pileUpData = False
 tCut = [2.5e12,4e12]
 #Read in the data from the csv file
-coinc = readInFile_stream(filepath=mainData[0][0],CoincWindow=coincWindow, CoincChannels = CoincChannels,chParams = ChannelParameters,tCut=tCut,TimeCut=timecut)
-# coinc = readInFile(filepath=mainData[0][0],CoincWindow=coincWindow, savefilePath=waveSaveFilePath, chParams = ChannelParameters)
+
+if pileUpData:
+    coinc = readInFile_stream(filepath=mainData[0][0],CoincWindow=coincWindow, CoincChannels = CoincChannels,chParams = ChannelParameters,tCut=tCut,TimeCut=timecut)
+else:
+    coinc = readInFile(filepath=mainData[0][0],CoincWindow=coincWindow, savefilePath=waveSaveFilePath, chParams = ChannelParameters,waveform = True)
 
 
 LSCLScale,LSCRScale,NaIScale = ReadInScale("/home/nick/PhD/KDK+/Daily_LSC_Calibration_testing/Loaded_BNL_L_LSC_Small_NaI_LY_coinc_2/RAW/SDataR_Loaded_BNL_L_LSC_Small_NaI_LY_coinc_2/figures/SDataR_Loaded_BNL_L_LSC_Small_NaI_LY_coinc_2_scale_factors.txt",) #Scales the LSC based on the file provided. 
@@ -1376,43 +1391,44 @@ else:
             # coinc.fitData(Bins = [integralBins,integralBins,integralBins],Binrange = integralBinRange,truncRange = [1000,2200])
             try:
                 coinc.fitData(Bins = [integralBins,integralBins,integralBins], Binrange = integralBinRange, saveFilePath = saveFilePath, fileName = fileName, norm = norm, log = log)
-            except:
+            except Exception as e:
+                print(f'Fit failed due to error: {e}')
                 pass
             
-            
-            # pileUpCoinc = totalCoinc(coinc.coincChannels,dataName = 'Pile Up Data')
-            # nonpileUpCoinc = totalCoinc(coinc.coincChannels, dataName = 'non-pile Up data')
-            # for c in coinc.Coincidences:
-            #     for e in c.Events:
-            #         if '0xc' in e.flag:
-            #             pileUpCoinc.Coincidences.append(c)
-            #         else:
-            #             nonpileUpCoinc.Coincidences.append(c)
-                        
-            # pileUpCoinc.SortChannels()
-            # nonpileUpCoinc.SortChannels()
-            
-            # PUsaveFilePath = mainData[0][0].with_suffix('') / 'figures' / f"Coincidence_Channels_{Channels}" / "Pile-up_data"
-            # Path(f"{PUsaveFilePath}").mkdir(parents=True, exist_ok=True)
-            
-            # pileUpCoinc.EnergyHist1D(additionalData = additionalCoincidences, Bins = [integralBins,integralBins,integralBins], Binrange = integralBinRange, saveFilePath = PUsaveFilePath, fileName = f"{fileName}_pileUp", norm = norm, log = log, scale = scale)
-            
-            # pileUpCoinc.Stabilityplots(ChBins = [integralBins,integralBins,integralBins],saveFilePath = saveFilePath, fileName = f"{fileName}_pileUp", scale = scale)
-            
-            # nonpileUpCoinc.EnergyHist1D(additionalData = additionalCoincidences, Bins = [integralBins,integralBins,integralBins], Binrange = integralBinRange, saveFilePath = PUsaveFilePath, fileName = f"{fileName}_non_pileUp", norm = norm, log = log, scale = scale)
-            
-            # nonpileUpCoinc.Stabilityplots(ChBins = [integralBins,integralBins,integralBins],saveFilePath = saveFilePath, fileName = f"{fileName}_non_pileUp", scale = scale)
-            
-            # PUWsaveFilePath = mainData[0][0].with_suffix('') / 'figures' / f"Coincidence_Channels_{Channels}" / "Pile-up_data" / "Pile-up_waveforms"
-            # nPUWsaveFilePath = mainData[0][0].with_suffix('') / 'figures' / f"Coincidence_Channels_{Channels}" / "Pile-up_data" / "non-Pile-up_waveforms"
-            
-            # Path(f"{PUWsaveFilePath}").mkdir(parents=True, exist_ok=True)
-            # Path(f"{nPUWsaveFilePath}").mkdir(parents=True, exist_ok=True)
-            
-            # for i in range(10):
-            #     random.choice(pileUpCoinc.Coincidences).Events[0].plotWaveform(PUWsaveFilePath)
-            #     random.choice(nonpileUpCoinc.Coincidences).Events[0].plotWaveform(nPUWsaveFilePath)
-            
+            if pileUpData:
+                pileUpCoinc = totalCoinc(coinc.coincChannels,dataName = 'Pile Up Data')
+                nonpileUpCoinc = totalCoinc(coinc.coincChannels, dataName = 'non-pile Up data')
+                for c in coinc.Coincidences:
+                    for e in c.Events:
+                        if '0xc' in e.flag:
+                            pileUpCoinc.Coincidences.append(c)
+                        else:
+                            nonpileUpCoinc.Coincidences.append(c)
+                            
+                pileUpCoinc.SortChannels()
+                nonpileUpCoinc.SortChannels()
+                
+                PUsaveFilePath = mainData[0][0].with_suffix('') / 'figures' / f"Coincidence_Channels_{Channels}" / "Pile-up_data"
+                Path(f"{PUsaveFilePath}").mkdir(parents=True, exist_ok=True)
+                
+                pileUpCoinc.EnergyHist1D(additionalData = additionalCoincidences, Bins = [integralBins,integralBins,integralBins], Binrange = integralBinRange, saveFilePath = PUsaveFilePath, fileName = f"{fileName}_pileUp", norm = norm, log = log, scale = scale)
+                
+                pileUpCoinc.Stabilityplots(ChBins = [integralBins,integralBins,integralBins],saveFilePath = saveFilePath, fileName = f"{fileName}_pileUp", scale = scale)
+                
+                nonpileUpCoinc.EnergyHist1D(additionalData = additionalCoincidences, Bins = [integralBins,integralBins,integralBins], Binrange = integralBinRange, saveFilePath = PUsaveFilePath, fileName = f"{fileName}_non_pileUp", norm = norm, log = log, scale = scale)
+                
+                nonpileUpCoinc.Stabilityplots(ChBins = [integralBins,integralBins,integralBins],saveFilePath = saveFilePath, fileName = f"{fileName}_non_pileUp", scale = scale)
+                
+                PUWsaveFilePath = mainData[0][0].with_suffix('') / 'figures' / f"Coincidence_Channels_{Channels}" / "Pile-up_data" / "Pile-up_waveforms"
+                nPUWsaveFilePath = mainData[0][0].with_suffix('') / 'figures' / f"Coincidence_Channels_{Channels}" / "Pile-up_data" / "non-Pile-up_waveforms"
+                
+                Path(f"{PUWsaveFilePath}").mkdir(parents=True, exist_ok=True)
+                Path(f"{nPUWsaveFilePath}").mkdir(parents=True, exist_ok=True)
+                
+                for i in range(10):
+                    random.choice(pileUpCoinc.Coincidences).Events[0].plotWaveform(PUWsaveFilePath)
+                    random.choice(nonpileUpCoinc.Coincidences).Events[0].plotWaveform(nPUWsaveFilePath)
+                
             E1DTime = time.time()
             print(f'\t Time to Plot 1D Energy Hist: {E1DTime- plottingStartTime}')
             

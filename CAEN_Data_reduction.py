@@ -87,7 +87,7 @@ def ReadInData(filepath, filename, savefilepath, coincWindow):
                 
 
 
-file = Path('/home/nick/PhD/KDK+/Daily_LSC_Calibration_testing/2026_06_24/2026_06_24_Daily_LSC_calibration_bck_no_coinc_new_settings_lower_thresh/RAW/SDataR_2026_06_24_Daily_LSC_calibration_bck_no_coinc_new_settings_lower_thresh.CSV')
+file = Path('/home/nick/PhD/KDK+/Daily_LSC_Calibration_testing/NaI_module_testing/2026_08_17/2026_08_17_Daily_LSC_calibration_Small_NaI_Module_testing_no_coinc/RAW/SDataR_2026_08_17_Daily_LSC_calibration_Small_NaI_Module_testing_no_coinc.CSV')
 # filename = 'SDataR_NaI_annulus_LS_Cs137_NaI_1_2_3_4_triple_coinc.CSV'
 
 coincWindow = 0 #ns

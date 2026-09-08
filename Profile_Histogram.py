@@ -108,8 +108,10 @@ class Hists2D:
             legend.SetHeader("Fit Results (pol1)", "C")
             legend.AddEntry(self.fit, f"p0 = {self.p0:.2f} #pm {self.p0_err:.2f}", "l")
             legend.AddEntry((0), f"p1 = {self.p1:.4f} #pm {self.p1_err:.4f}", "")
-            legend.AddEntry((0), f"#chi^{{2}} / ndof = {self.chi2:.2f} / {self.ndof}", "")
-            legend.AddEntry((0), f"p-value = {self.p_value:.4f}", "")
+            
+            
+            
+            
             legend.SetBorderSize(1)
             legend.SetFillColorAlpha(0, 0)  # semi-transparent background
             self.legend = legend               # store to prevent garbage collection
@@ -553,19 +555,23 @@ def ReadInChannelNames(settings):
     
     
 # rootfilePath = Path('/home/nick/PhD/KDK+/Daily_LSC_Calibration_testing/2026_05_08/2026_05_08_Daily_LSC_calibration_Cs137_coinc/RAW/coinc_sorted') #filepath to the coinc sorted directory. 
-rootfilePath = Path('/home/nick/PhD/KDK+/Daily_LSC_Calibration_testing/2026_07_10/2026_07_10_Daily_LSC_calibration_bCs137_coinc_1500_LSC_HV/RAW/coinc_sorted_500ns/')
+rootfilePath = Path('/home/nick/PhD/KDK+/Daily_LSC_Calibration_testing/NaI_module_testing/2026_08_17/2026_08_17_Daily_LSC_calibration_Small_NaI_Module_testing/RAW/coinc_sorted_500ns/')
 
 # LSCChannels = [4,5]
 # NaIChannels = [8,10,12,14] #Protects against the possibility of having a werid channel coincidence layout with incorrect channel numbers. 
 
+# NaIChannels = []
+
 LSCChannels = [0,1]
 NaIChannels = [2,3,4,5]
-nbins = 150
+nbins = 100
 XYProfile = True
 
 
 # pattern = re.compile(r'_coinc_4_5_(8|10|12|14)\.txt$')
 pattern = re.compile(rf'_coinc_{LSCChannels[0]}_{LSCChannels[1]}_({NaIChannels[0]}|{NaIChannels[1]}|{NaIChannels[2]}|{NaIChannels[3]}).txt$')
+
+# pattern = re.compile(rf'_coinc_{LSCChannels[0]}_{LSCChannels[1]}_({NaIChannels[0]}).txt$')
 
 coincFiles = sorted([
     f for f in rootfilePath.glob(f'*_coinc_{LSCChannels[0]}_{LSCChannels[1]}_*.txt')
@@ -594,20 +600,11 @@ for filePath in coincFiles:
 
     hist2DData = make2DHists(cData,nbins)
 
-    # cutEndPoints = [[0,0], #[x coords, y coords]
-    #                 [0,4000],
-    #                 [50,4000],
-    #                 [50,800],
-    #                 [800,50],
-    #                 [4000,50],
-    #                 [4000,0],
-    #                 [0,0]]
-    
     cutEndPoints = [[0,0], #[x coords, y coords]
                     [0,4000],
                     [50,4000],
-                    [50,1200],
-                    [2000,50],
+                    [50,800],
+                    [800,50],
                     [4000,50],
                     [4000,0],
                     [0,0]]
@@ -615,11 +612,29 @@ for filePath in coincFiles:
     cutEndPointsInverse = [[0,0], #[x coords, y coords]
                     [0,4000],
                     [50,4000],
-                    [50,2000],
-                    [1200,50],
+                    [50,800],
+                    [800,50],
                     [4000,50],
                     [4000,0],
                     [0,0]]
+    
+    # cutEndPoints = [[0,0], #[x coords, y coords]
+    #                 [0,4000],
+    #                 [50,4000],
+    #                 [50,1200],
+    #                 [2000,50],
+    #                 [4000,50],
+    #                 [4000,0],
+    #                 [0,0]]
+    
+    # cutEndPointsInverse = [[0,0], #[x coords, y coords]
+    #                 [0,4000],
+    #                 [50,4000],
+    #                 [50,2000],
+    #                 [1200,50],
+    #                 [4000,50],
+    #                 [4000,0],
+    #                 [0,0]]
 
     scaleFactor = 0.5 #With low statistics this number needs to be reduced. With high statistics you can keep this around 0.6.
     
