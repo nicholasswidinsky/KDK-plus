@@ -41,7 +41,7 @@ class CoicidenceData:
         
         coincChannelsStr = '_'.join([str(i) for i in sortedCh])
         
-        coincfile = f"{filepath}/{filename}_coinc_{coincChannelsStr}.txt" 
+        coincfile = filepath/f"{filename}_coinc_{coincChannelsStr}.txt" 
         
         if coincfile in openedfiles:
             f = open(coincfile, 'a')
@@ -87,16 +87,19 @@ def ReadInData(filepath, filename, savefilepath, coincWindow):
                 
 
 
-file = Path('/home/nick/PhD/KDK+/Daily_LSC_Calibration_testing/NaI_module_testing/2026_08_17/2026_08_17_Daily_LSC_calibration_Small_NaI_Module_testing_no_coinc/RAW/SDataR_2026_08_17_Daily_LSC_calibration_Small_NaI_Module_testing_no_coinc.CSV')
+file = Path('/home/nick/PhD/KDK+/Fridge_tests/NaI_Scin_Cs137/RAW/SDataR_NaI_Scin_Cs137.CSV')
 # filename = 'SDataR_NaI_annulus_LS_Cs137_NaI_1_2_3_4_triple_coinc.CSV'
 
 coincWindow = 0 #ns
 
 
-filename = str(file).split('.CSV')[0].split('/')[-1]
-filepath = str(file).split('.CSV')[0].split(filename)[0]
+# filename = str(file).split('.CSV')[0].split('/')[-1]
+filename = file.stem 
+# filepath = str(file).split('.CSV')[0].split(filename)[0]
+filepath = file.parent
 
-savefilepath = f"{filepath}/coinc_sorted_{coincWindow}ns"
+
+savefilepath = filepath/ f'coinc_sorted_{coincWindow}ns'
 Path(savefilepath).mkdir(parents=True, exist_ok = True)
 
 
