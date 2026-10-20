@@ -353,6 +353,11 @@ def ReadInChannelNames(settings):
                 channels[f'Channel {int(index_elem.text)}'] = [label]
 
     # Print the resulting dictionary: {channel_index: label, ...}
+    
+    if not channels:
+        #If there are no channel labels make a dictionary for the channel numbers
+        for i in range(16):
+            channels[f'Channel {i}'] = [f'Channel {i}']
     return channels
 
 
@@ -368,9 +373,10 @@ def gauss(x,n_gauss,sigma,mu_gauss):
 def expFunc(x, n_exp, mu_exp, tau, xLim1,xLim2):
     return n_exp, n_exp * truncexpon.pdf(x, xLim1, xLim2, loc = mu_exp, scale = tau)
 
-filepath = Path('/home/nick/PhD/KDK+/Daily_LSC_Calibration_testing/NaI_module_testing/2026_08_17/2026_08_17_Daily_LSC_calibration_Small_NaI_Module_testing_no_coinc/RAW/coinc_sorted_0ns/')
+filepath = Path('/home/nick/PhD/KDK+/Fridge_tests/NaI_Scin_Cs137/RAW/coinc_sorted_0ns/')
 settingsFilePath = filepath.parent.parent / 'settings.xml'
 detectors = ReadInChannelNames(settingsFilePath)
+print(detectors)
 
 # channels = [8,10,12,14]
 # fitRegions = [[[2200,3400]],
@@ -383,16 +389,11 @@ detectors = ReadInChannelNames(settingsFilePath)
 #             [[0,4000]],
 #             [[0,4000]]]
 
-channels = [0,1]
-fitRegions = [[[3000,4000]],
-              [[2500,4000]],
-              [[3000,4000],[3000,4000]],
-              [[2500,4000]]]
 
-BinRange = [[[0,2000]],
-            [[0,2000]],
-            [[0,4000],[0,4000]],
-            [[0,4000]]]
+channels = [0]
+fitRegions = [[[1200,2000]]]
+
+BinRange = [[[0,4000]]]
 integralBins = 100
 scale = False
 norm = False
