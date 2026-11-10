@@ -373,7 +373,7 @@ def gauss(x,n_gauss,sigma,mu_gauss):
 def expFunc(x, n_exp, mu_exp, tau, xLim1,xLim2):
     return n_exp, n_exp * truncexpon.pdf(x, xLim1, xLim2, loc = mu_exp, scale = tau)
 
-filepath = Path('/home/nick/PhD/KDK+/Fridge_tests/NaI_Scin_Cs137/RAW/coinc_sorted_0ns/')
+filepath = Path('/home/nick/PhD/KDK+/Stability_experiment_Luca/file/Stability_experiment_iteration1/raw_data_files/Enhanced_Stability_V9_BNL_UGLLT_bubbled5min_it1_26/RAW/coinc_sorted_500ns/')
 settingsFilePath = filepath.parent.parent / 'settings.xml'
 detectors = ReadInChannelNames(settingsFilePath)
 print(detectors)
@@ -390,10 +390,19 @@ print(detectors)
 #             [[0,4000]]]
 
 
-channels = [0]
-fitRegions = [[[1200,2000]]]
+channels = [0,2,3,4,6,7]
+fitRegions = [[[1200,2000]],
+              [[1200,2000]],
+              [[1200,2000]],
+              [[1200,2000]],
+              [[1200,2000]]]
 
-BinRange = [[[0,4000]]]
+BinRange = [[[0,4000]],
+            [[0,4000]],
+            [[0,4000]],
+            [[0,4000]],
+            [[0,4000]],
+            [[0,4000]]]
 integralBins = 100
 scale = False
 norm = False
