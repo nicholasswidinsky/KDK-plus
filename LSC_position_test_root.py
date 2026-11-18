@@ -4,6 +4,7 @@ from pathlib import Path
 import xml.etree.ElementTree as ET
 from itertools import combinations
 import math
+import scipy.stats as Stats
 
 
 #########################################################################################
@@ -141,10 +142,10 @@ class positionData:
     def calcLogRatio(self):
         logRatioCols = []
         
-        # dfPos = self.df.Filter(f"Energy_{self.Lch} > 0 && Energy_{self.Rch} > 0", "positive energies")
+        dfPos = self.df.Filter(f"Energy_{self.Lch} < 4095 && Energy_{self.Rch} < 4095", "positive energies")
         
         colName = f"LogRatio"
-        self.df = self.df.Define(colName, f"std::log(static_cast<double>(Energy_{self.Rch} + 0.00000000001) / (Energy_{self.Lch}+ 0.00000000001))")
+        self.df = dfPos.Define(colName, f"std::log(static_cast<double>(Energy_{self.Rch} + 0.00000000001) / (Energy_{self.Lch}+ 0.00000000001))")
         
     def plotLogRatioHist(self):
         
@@ -280,6 +281,15 @@ class positionData:
         
         self.LogRatioEnergyCanvas.SaveAs(str(self.saveFP / f"log_Ratio_Energy_{self.positionSTR}_{self.trialNumber}.pdf"))
 
+
+        #Save the events to a .csv file for Philippe
+        
+        # columns = [f"Energy_{self.Lch}", f"Energy_{self.Rch}", "Energy_2"]
+        # cols = dfClean.AsNumpy(columns)
+        # data = np.column_stack([cols[columns[0]],cols[columns[1]],cols[columns[2]]])
+        
+        # out = self.saveFP / f"Position_{self.positionSTR}_iter_{self.trialNumber}_integral_data_cut_0_bin.csv"
+        # np.savetxt(out,data,delimiter = ";", header = "Integral_L;Integral_R;Integral_NaI", comments="", fmt = "%d")
         
     def plot1DHist(self,canvas):
         
@@ -381,6 +391,11 @@ class positionData:
         
         canvas.Update()
         
+        self.fitCompL = self.MakeFitComponents(self.fitFuncL, "L", erf = False)
+        self.fitCompLErf = self.MakeFitComponents(self.fitFuncLerf, "L", erf = True)
+        self.fitCompR = self.MakeFitComponents(self.fitFuncR, "R", erf = False)
+        self.fitCompRErf = self.MakeFitComponents(self.fitFuncRerf, "R", erf = True)
+        
         
         #Create the plot for the individual position fits
         self.FitCanvas = ROOT.TCanvas(f"Individual_Fit_canvas_{self.positionSTR}_{self.trialNumber}", f"Position {self.positionSTR} fit", 2800,1600)
@@ -394,6 +409,8 @@ class positionData:
         leftMax = self.fitFuncL.GetXmax()
         
         self.LSCLHist1D.Draw()
+        for fitComp in self.fitCompL + self.fitCompLErf:
+            fitComp.Draw("SAME")
         self.fitFuncL.Draw("SAME")
         self.fitFuncLerf.Draw("SAME")
         
@@ -440,6 +457,8 @@ class positionData:
        
         
         self.LSCRHist1D.Draw()
+        for fitComp in self.fitCompR + self.fitCompRErf:
+            fitComp.Draw("SAME")
         self.fitFuncR.Draw("SAME")
         self.fitFuncRerf.Draw("SAME")
         
@@ -483,43 +502,35 @@ class positionData:
         
         self.FitCanvas.SaveAs(str(self.saveFP / f"Individual_fits_{self.positionSTR}_{self.trialNumber}.pdf"))
         self.FitCanvas.SaveAs(str(self.saveFP / f"Individual_fits_{self.positionSTR}_{self.trialNumber}.png"))
+
+    def MakeFitComponents(self,func,side,erf):
         
-    # def MakeLegend(self,fitRes,fitResErf, fitFunc, fitFuncErf):
-    #     ok = fitRes.IsValid() and fitRes.Status() == 0
-    #     okErf = fitResErf.IsValid() and fitResErf.Status() == 0
+        xRange = [func.GetXmin(), func.GetXmax()]
+        colour = func.GetLineColor()
+        tag = f"Pos_{self.positionSTR}_iter_{self.trialNumber}_{side}_fit{"_erf" if erf else ""}"
         
-    #     mu, muErr = fitRes.Parameter(1), fitRes.ParError(1)
-    #     muErf, muErrErf = fitResErf.Parameter(1), fitResErf.ParError(1)
+        gaus = ROOT.TF1(f"Gaus_comp_{tag}", "gaus", xRange[0], xRange[1])
+        gaus.SetParameters(func.GetParameter(0),func.GetParameter(1),func.GetParameter(2))
+        
+        expo = ROOT.TF1(f"Exp_comp_{tag}", "expo", xRange[0], xRange[1])
+        expo.SetParameters(func.GetParameter(3), func.GetParameter(4))
+        
+        components = [(gaus,2), (expo,7)] #Components, linestyle
+        
+        if erf:
+            erfComp = ROOT.TF1(f"Erf_comp_{tag}", "[0]*TMath::Erfc((x-[1])/[2])",xRange[0],xRange[1])
+            erfComp.SetParameters(func.GetParameter(5),func.GetParameter(6),func.GetParameter(7))
+            components.append((erfComp,3))
             
             
-    #     # Build legend — positioned to the left of the colour bar
-    #         # (x1, y1, x2, y2) in NDC coordinates (0-1)
-    #     legend = ROOT.TLegend(0.02, 0.05, 0.98, 0.95)
-        
-    #     legend.SetNColumns(2)
-    #     legend.SetBorderSize(1)
-    #     legend.SetFillColorAlpha(0, 0)
-    #     legend.SetTextSize(0)   
-        
-    #     legend.SetHeader("Fit Results", "C")
-    #     legend.AddEntry(fitFunc, f"#mu = {mu:.1f} #pm {muErr:.1f}", "l")
-    #     legend.AddEntry(ROOT.nullptr, f"#chi^{{2}}/ndf = {fitRes.Chi2():.1f} / {fitRes.Ndf()}", "")
-    #     legend.AddEntry(ROOT.nullptr, f"p-value = {fitRes.Prob():.3f}", "")
-
-    #     status = legend.AddEntry(ROOT.nullptr, "Fit OK" if ok else f"Fit FAILED (status {fitRes.Status()})", "")
-    #     status.SetTextColor(ROOT.kGreen + 2 if ok else ROOT.kRed)
-        
-    #     #########################################################################
-        
-    #     legend.AddEntry(fitFuncErf, f"#mu = {muErf:.1f} #pm {muErrErf:.1f}", "l")
-    #     legend.AddEntry(ROOT.nullptr, f"#chi^{{2}}/ndf = {fitResErf.Chi2():.1f} / {fitResErf.Ndf()}", "")
-    #     legend.AddEntry(ROOT.nullptr, f"p-value = {fitResErf.Prob():.3f}", "")
-
-    #     status = legend.AddEntry(ROOT.nullptr, "Fit OK" if okErf else f"Fit FAILED (status {fitResErf.Status()})", "")
-    #     status.SetTextColor(ROOT.kGreen + 2 if okErf else ROOT.kRed)
-        
-
-    #     return legend
+        for f, style in components:
+            f.SetLineColor(colour)
+            f.SetLineStyle(style)
+            f.SetLineWidth(2)
+            
+        return [f for f,s in components]
+            
+            
     
     def MakeLegend(self, fitRes, fitResErf, fitFunc, fitFuncErf):
         ok    = fitRes.IsValid()    and fitRes.Status() == 0
@@ -562,6 +573,7 @@ class MeanPositionData:
         #Store the means and their errors
         self.positions = []
         # self.positionsErr = [0.25 for i in self.positions]
+        
         
         self.norm = norm
         self.erf = erf
@@ -618,6 +630,8 @@ class MeanPositionData:
         else:
             resultName = "Position_test_no_outer_sleeve_mean"
             
+        
+            
             
         #Make the root TGraphErrors for the final results.     
         self.meanLPos = makeGraph(self.positions,self.muL,self.positionsErr,self.muLErr) #= ROOT.TGraphErrors(len(self.positions), self.positions, self.muL,self.positionsErr, self.muLErr)
@@ -654,8 +668,8 @@ class MeanPositionData:
             self.summedPosition.GetYaxis().SetTitle("mean position (ADC)")
         self.summedPosition.SetTitle("Mean Position summed PMTs")
         self.summedPosition.SetMarkerSize(2.0)
-        self.summedPosition.SetMarkerColor(ROOT.kGreen)
-        self.summedPosition.SetMarkerStyle(21)
+        self.summedPosition.SetMarkerColor(ROOT.kGreen+2)
+        self.summedPosition.SetMarkerStyle(34)
         
         
         
@@ -668,18 +682,36 @@ class MeanPositionData:
         self.sqrtProdPosition.SetTitle("square root product")
         self.sqrtProdPosition.SetMarkerSize(2.0)
         self.sqrtProdPosition.SetMarkerColor(ROOT.kBlack)
-        self.sqrtProdPosition.SetMarkerStyle(20)
+        self.sqrtProdPosition.SetMarkerStyle(29)
         
         
-        
+        ########################################################################
+        # Make the plot for the log of the position. 
         self.logRatioPosition = makeGraph(self.positions,self.logRatio,self.positionsErr,self.logRatioErr) #ROOT.TGraphErrors(len(self.positions),self.positions, self.logRatio, self.positionsErr,self.logRatioErr)  
+        self.linFit = ROOT.TF1(f"{resultName}_lin_fit","pol1",-4,4)
+        self.logRatioPosition.Fit(self.linFit,"RN")
+        self.linFit.SetLineColor(ROOT.kRed)
         self.logRatioPosition.GetXaxis().SetTitle("Position (cm)")
         self.logRatioPosition.GetYaxis().SetTitle("ln(S2/S1)")
         self.logRatioPosition.SetTitle("Log Ratio")
         self.logRatioPosition.SetMarkerSize(2.0)
         self.logRatioPosition.SetMarkerColor(ROOT.kBlue)
-        self.logRatioPosition.SetMarkerStyle(21)  
+        self.logRatioPosition.SetMarkerStyle(20)  
             
+        #Determine the y Range based on all the data.  
+        yConcatData = np.concatenate([np.asarray(v, dtype = float) for v in (self.muL, self.muR, self.summedMeans, self.sqrtProd)])
+        yErrConcatData = np.concatenate([np.asarray(v, dtype = float) for v in (self.muLErr, self.muRErr, self.summedMeansErr, self.sqrtProdErr)])
+        
+        yMin,yMax = np.nanmin(yConcatData - yErrConcatData), np.nanmax(yConcatData + yErrConcatData)
+        
+        margin = 0.1 * (yMax - yMin)
+        
+        yRange = (yMin - margin, yMax+margin)
+            
+        #Set the minimum and maximum y value for the first plot that we make
+        self.meanLPos.SetMinimum(yRange[0])
+        self.meanLPos.SetMaximum(yRange[1])
+        
             
         #Make the results plot
         self.Canvas = ROOT.TCanvas(resultName,resultName, 1400,800)
@@ -708,9 +740,33 @@ class MeanPositionData:
         self.Canvas.Update()
         
         pad = self.Canvas.cd(2)
-        canvasPadding(pad,0.1,0.1,0.10,0.15)
+        canvasPadding(pad,0.1,0.2,0.10,0.15)
         
         self.logRatioPosition.Draw("AP")
+        self.linFit.Draw("Same")
+        
+        self.p0       = self.linFit.GetParameter(0)
+        self.p0_err   = self.linFit.GetParError(0)
+        self.p1       = self.linFit.GetParameter(1)
+        self.p1_err   = self.linFit.GetParError(1)
+        self.chi2     = self.linFit.GetChisquare()
+        self.ndof     = self.linFit.GetNDF()
+        self.p_value  = Stats.chi2.sf(self.chi2, self.ndof)  # survival function = 1 - CDF
+        self.attenuation = 2/self.p1
+        self.attenuationErr = (2*self.p1_err)/self.p1**2
+        
+        self.legLinFit = ROOT.TLegend(0.81, 0.60, 0.99, 0.88)
+        self.legLinFit.SetBorderSize(1)
+        # self.leg.SetFillStyle(0)
+        self.legLinFit.SetTextSize(0.04)
+        self.legLinFit.AddEntry(self.linFit, f"p0 = {self.p0:.2f} #pm {self.p0_err:.2f}", "l")
+        self.legLinFit.AddEntry((0), f"a = ({self.attenuation:.4f} #pm {self.attenuationErr:.4f}) cm")
+        self.legLinFit.AddEntry((0), f"p1 = {self.p1:.4f} #pm {self.p1_err:.4f}", "")
+        self.legLinFit.AddEntry((0), f"#chi^{{2}} / ndof = {self.chi2:.2f} / {self.ndof}", "")
+        self.legLinFit.AddEntry((0), f"p-value = {self.p_value:.4f}", "")
+        self.legLinFit.Draw()
+        
+        
         self.Canvas.Update()
         
         self.Canvas.SaveAs(str(self.saveFP / f"{resultName}.pdf"))
@@ -789,7 +845,8 @@ def makeResultPlots(data,centerData,saveFP):
     MeanDataNorm.plotResults()
     MeanDataErf.plotResults()
     MeanDataNormErf.plotResults()
-    
+
+
 
 def makeGraph(x, y, ex, ey):
     x, y, ex, ey = [np.asarray(a, dtype=np.float64) for a in (x, y, ex, ey)]
@@ -886,17 +943,31 @@ files = sorted(RootDirectory.rglob("*_sorted_coinc*.root"))
 
 channels = [0,1,2]
 
-fitWindow = {'-5': [[1800,3600],[900,1900]],
-             '-4': [[1600,3600],[800,2200]],
-             '-3': [[1400,3200],[1000,2200]],
-             '-2': [[1400,3000],[1000,2500]],
-             '-1': [[1200,2800],[1400,2600]],
-             '0': [[1200,2500],[1500,2500]],
-             '1': [[1400,2600],[1200,2800]],
-             '2': [[1000,2500],[1400,3000]],
-             '3': [[1000,2200],[1500,3300]],
-             '4': [[800,2200],[1500,3500]],
-             '5': [[800,2000],[1500,3500]]}
+#Fit values that mostly work around the peak itself, not taking much background into account. 
+# fitWindow = {'-5': [[1800,3600],[900,1900]],
+#              '-4': [[1600,3600],[800,2200]],
+#              '-3': [[1400,3200],[1000,2200]],
+#              '-2': [[1400,3000],[1000,2500]],
+#              '-1': [[1200,2800],[1400,2600]],
+#              '0': [[1200,2500],[1500,2500]],
+#              '1': [[1400,2600],[1200,2800]],
+#              '2': [[1000,2500],[1400,3000]],
+#              '3': [[1000,2200],[1500,3300]],
+#              '4': [[800,2200],[1500,3500]],
+#              '5': [[800,2000],[1500,3500]]}
+
+
+fitWindow = {'-5': [[800,4000],[800,2800]],
+             '-4': [[800,4000],[800,2600]],
+             '-3': [[800,3800],[800,2600]],
+             '-2': [[800,3400],[800,2800]],
+             '-1': [[800,3200],[800,3000]],
+             '0': [[800,3000],[800,3000]],
+             '1': [[800,2600],[800,2800]],
+             '2': [[800,2500],[800,3400]],
+             '3': [[800,2600],[800,3800]],
+             '4': [[800,2600],[800,4000]],
+             '5': [[800,2800],[800,4000]]}
 
 Hist1DFitsCanvas = ROOT.TCanvas("Hist_1D_Position_fits", "Position Histograms",25600,1600)
 ncols = 11
